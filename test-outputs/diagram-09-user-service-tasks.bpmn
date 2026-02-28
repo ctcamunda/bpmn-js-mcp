@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Order_Fulfillment" name="Order Fulfillment" isExecutable="true" camunda:historyTimeToLive="P180D">
+    <bpmn:startEvent id="StartEvent_OrderReceived" name="Order Received">
+      <bpmn:outgoing>Flow_0q19shm</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="UserTask_ReviewOrder" name="Review Order" camunda:candidateGroups="sales">
+      <bpmn:incoming>Flow_0q19shm</bpmn:incoming>
+      <bpmn:outgoing>Flow_071o5g1</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_0q19shm" sourceRef="StartEvent_OrderReceived" targetRef="UserTask_ReviewOrder" />
+    <bpmn:serviceTask id="ServiceTask_CheckInventory" name="Check Inventory" camunda:type="external" camunda:topic="check-inventory">
+      <bpmn:incoming>Flow_071o5g1</bpmn:incoming>
+      <bpmn:outgoing>Flow_1h2exov</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_071o5g1" sourceRef="UserTask_ReviewOrder" targetRef="ServiceTask_CheckInventory" />
+    <bpmn:serviceTask id="ServiceTask_ProcessPayment" name="Process Payment" camunda:type="external" camunda:topic="process-payment">
+      <bpmn:incoming>Flow_1h2exov</bpmn:incoming>
+      <bpmn:outgoing>Flow_07g90dw</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1h2exov" sourceRef="ServiceTask_CheckInventory" targetRef="ServiceTask_ProcessPayment" />
+    <bpmn:userTask id="UserTask_PackOrder" name="Pack Order" camunda:candidateGroups="warehouse">
+      <bpmn:incoming>Flow_07g90dw</bpmn:incoming>
+      <bpmn:outgoing>Flow_0iev0yo</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_07g90dw" sourceRef="ServiceTask_ProcessPayment" targetRef="UserTask_PackOrder" />
+    <bpmn:serviceTask id="ServiceTask_SendConfirmationEmail" name="Send Confirmation Email" camunda:type="external" camunda:topic="send-email">
+      <bpmn:incoming>Flow_0iev0yo</bpmn:incoming>
+      <bpmn:outgoing>Flow_1qtb1da</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0iev0yo" sourceRef="UserTask_PackOrder" targetRef="ServiceTask_SendConfirmationEmail" />
+    <bpmn:endEvent id="EndEvent_OrderComplete" name="Order Complete">
+      <bpmn:incoming>Flow_1qtb1da</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1qtb1da" sourceRef="ServiceTask_SendConfirmationEmail" targetRef="EndEvent_OrderComplete" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_Order_Fulfillment">
+      <bpmndi:BPMNShape id="StartEvent_OrderReceived_di" bpmnElement="StartEvent_OrderReceived">
+        <dc:Bounds x="162" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="141" y="221" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ReviewOrder_di" bpmnElement="UserTask_ReviewOrder">
+        <dc:Bounds x="248" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_CheckInventory_di" bpmnElement="ServiceTask_CheckInventory">
+        <dc:Bounds x="398" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_ProcessPayment_di" bpmnElement="ServiceTask_ProcessPayment">
+        <dc:Bounds x="548" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_PackOrder_di" bpmnElement="UserTask_PackOrder">
+        <dc:Bounds x="698" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_SendConfirmationEmail_di" bpmnElement="ServiceTask_SendConfirmationEmail">
+        <dc:Bounds x="848" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_OrderComplete_di" bpmnElement="EndEvent_OrderComplete">
+        <dc:Bounds x="998" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="977" y="221" width="79" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0q19shm_di" bpmnElement="Flow_0q19shm">
+        <di:waypoint x="198" y="200" />
+        <di:waypoint x="248" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_071o5g1_di" bpmnElement="Flow_071o5g1">
+        <di:waypoint x="348" y="200" />
+        <di:waypoint x="398" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1h2exov_di" bpmnElement="Flow_1h2exov">
+        <di:waypoint x="498" y="200" />
+        <di:waypoint x="548" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_07g90dw_di" bpmnElement="Flow_07g90dw">
+        <di:waypoint x="648" y="200" />
+        <di:waypoint x="698" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0iev0yo_di" bpmnElement="Flow_0iev0yo">
+        <di:waypoint x="798" y="200" />
+        <di:waypoint x="848" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1qtb1da_di" bpmnElement="Flow_1qtb1da">
+        <di:waypoint x="948" y="200" />
+        <di:waypoint x="998" y="200" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

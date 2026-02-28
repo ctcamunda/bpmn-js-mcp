@@ -12,16 +12,21 @@ import { isType } from '../utils';
 /** Common verbs that indicate verb-object naming (good pattern for activities). */
 const ACTIVITY_VERBS = new Set([
   'accept',
+  'acknowledge',
   'add',
   'adjust',
+  'allocate',
   'analyse',
   'analyze',
   'apply',
   'approve',
   'archive',
+  'assess',
   'assign',
   'audit',
+  'authorize',
   'book',
+  'broadcast',
   'calculate',
   'call',
   'cancel',
@@ -35,9 +40,11 @@ const ACTIVITY_VERBS = new Set([
   'complete',
   'compose',
   'compute',
+  'conduct',
   'configure',
   'confirm',
   'connect',
+  'consolidate',
   'convert',
   'copy',
   'create',
@@ -50,6 +57,7 @@ const ACTIVITY_VERBS = new Set([
   'design',
   'determine',
   'develop',
+  'diagnose',
   'disable',
   'dispatch',
   'distribute',
@@ -59,6 +67,8 @@ const ACTIVITY_VERBS = new Set([
   'edit',
   'email',
   'enable',
+  'enrich',
+  'enroll',
   'enter',
   'escalate',
   'estimate',
@@ -74,6 +84,7 @@ const ACTIVITY_VERBS = new Set([
   'find',
   'fix',
   'forward',
+  'fulfill',
   'generate',
   'get',
   'grant',
@@ -102,6 +113,7 @@ const ACTIVITY_VERBS = new Set([
   'move',
   'notify',
   'obtain',
+  'onboard',
   'open',
   'order',
   'output',
@@ -145,6 +157,7 @@ const ACTIVITY_VERBS = new Set([
   'save',
   'scan',
   'schedule',
+  'screen',
   'search',
   'select',
   'send',
@@ -167,6 +180,7 @@ const ACTIVITY_VERBS = new Set([
   'transfer',
   'transform',
   'translate',
+  'triage',
   'trigger',
   'update',
   'upgrade',
@@ -241,8 +255,12 @@ function ruleFactory() {
     }
 
     // Check gateways: should end with "?"
+    // Skip merge gateways (multiple incoming, ≤1 outgoing) — they don't need question labels
     if (isType(node, 'bpmn:ExclusiveGateway') || isType(node, 'bpmn:InclusiveGateway')) {
-      if (!trimmed.endsWith('?')) {
+      const incoming = node.incoming || [];
+      const outgoing = node.outgoing || [];
+      const isMergeGateway = incoming.length > 1 && outgoing.length <= 1;
+      if (!isMergeGateway && !trimmed.endsWith('?')) {
         reporter.report(
           node.id,
           `Gateway label should be a yes/no question ending with "?" (e.g. "Order valid?")`

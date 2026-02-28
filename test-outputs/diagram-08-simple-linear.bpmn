@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Simple_Leave_Request" name="Simple Leave Request" isExecutable="true" camunda:historyTimeToLive="P180D">
+    <bpmn:startEvent id="StartEvent_LeaveRequested" name="Leave Requested">
+      <bpmn:outgoing>Flow_1yx1icz</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="UserTask_SubmitLeaveForm" name="Submit Leave Form" camunda:assignee="${initiator}" camunda:candidateGroups="employee">
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="startDate" label="Start Date" type="date" />
+          <camunda:formField id="endDate" label="End Date" type="date" />
+          <camunda:formField id="reason" label="Reason" type="string">
+            <camunda:validation>
+              <camunda:constraint name="required" />
+            </camunda:validation>
+          </camunda:formField>
+        </camunda:formData>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1yx1icz</bpmn:incoming>
+      <bpmn:outgoing>Flow_18zap61</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_1yx1icz" sourceRef="StartEvent_LeaveRequested" targetRef="UserTask_SubmitLeaveForm" />
+    <bpmn:userTask id="UserTask_ApproveLeave" name="Approve Leave" camunda:candidateGroups="manager">
+      <bpmn:incoming>Flow_18zap61</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wek51h</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_18zap61" sourceRef="UserTask_SubmitLeaveForm" targetRef="UserTask_ApproveLeave" />
+    <bpmn:endEvent id="EndEvent_LeaveProcessed" name="Leave Processed">
+      <bpmn:incoming>Flow_1wek51h</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1wek51h" sourceRef="UserTask_ApproveLeave" targetRef="EndEvent_LeaveProcessed" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_Simple_Leave_Request">
+      <bpmndi:BPMNShape id="StartEvent_LeaveRequested_di" bpmnElement="StartEvent_LeaveRequested">
+        <dc:Bounds x="162" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="137" y="221" width="87" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_SubmitLeaveForm_di" bpmnElement="UserTask_SubmitLeaveForm">
+        <dc:Bounds x="248" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ApproveLeave_di" bpmnElement="UserTask_ApproveLeave">
+        <dc:Bounds x="398" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_LeaveProcessed_di" bpmnElement="EndEvent_LeaveProcessed">
+        <dc:Bounds x="548" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="524" y="221" width="85" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1yx1icz_di" bpmnElement="Flow_1yx1icz">
+        <di:waypoint x="198" y="200" />
+        <di:waypoint x="248" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_18zap61_di" bpmnElement="Flow_18zap61">
+        <di:waypoint x="348" y="200" />
+        <di:waypoint x="398" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1wek51h_di" bpmnElement="Flow_1wek51h">
+        <di:waypoint x="448" y="160" />
+        <di:waypoint x="448" y="140" />
+        <di:waypoint x="566" y="140" />
+        <di:waypoint x="566" y="182" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Credit_Approval" name="Credit Approval" isExecutable="true" camunda:historyTimeToLive="P180D">
+    <bpmn:startEvent id="StartEvent_ApplicationSubmitted" name="Application Submitted">
+      <bpmn:outgoing>Flow_1lcw4e5</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="UserTask_ReviewApplication" name="Review Application" camunda:candidateGroups="underwriter">
+      <bpmn:incoming>Flow_1lcw4e5</bpmn:incoming>
+      <bpmn:outgoing>Flow_1e8hlwy</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_1lcw4e5" sourceRef="StartEvent_ApplicationSubmitted" targetRef="UserTask_ReviewApplication" />
+    <bpmn:serviceTask id="ServiceTask_CheckCreditScore" name="Check Credit Score" camunda:type="external" camunda:topic="check-credit-score">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:outputParameter name="creditScore">${creditScore}</camunda:outputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1e8hlwy</bpmn:incoming>
+      <bpmn:outgoing>Flow_06mkjaa</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_1e8hlwy" sourceRef="UserTask_ReviewApplication" targetRef="ServiceTask_CheckCreditScore" />
+    <bpmn:exclusiveGateway id="Gateway_ScoreOK" name="Score OK?" default="Flow_4zh9tuh_Score700">
+      <bpmn:incoming>Flow_06mkjaa</bpmn:incoming>
+      <bpmn:outgoing>Flow_Score700</bpmn:outgoing>
+      <bpmn:outgoing>Flow_4zh9tuh_Score700</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_06mkjaa" sourceRef="ServiceTask_CheckCreditScore" targetRef="Gateway_ScoreOK" />
+    <bpmn:userTask id="UserTask_ApproveCredit" name="Approve Credit" camunda:candidateGroups="senior-underwriter">
+      <bpmn:incoming>Flow_Score700</bpmn:incoming>
+      <bpmn:outgoing>Flow_ApproveCredit_to_Merge</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UserTask_RejectApplication" name="Reject Application" camunda:candidateGroups="underwriter">
+      <bpmn:incoming>Flow_4zh9tuh_Score700</bpmn:incoming>
+      <bpmn:outgoing>Flow_RejectApplication_to_Merge</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_Merge" name="">
+      <bpmn:incoming>Flow_ApproveCredit_to_Merge</bpmn:incoming>
+      <bpmn:incoming>Flow_RejectApplication_to_Merge</bpmn:incoming>
+      <bpmn:outgoing>Flow_032c619</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ServiceTask_SendNotification" name="Send Notification" camunda:type="external" camunda:topic="send-notification">
+      <bpmn:incoming>Flow_032c619</bpmn:incoming>
+      <bpmn:outgoing>Flow_198vayl</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_032c619" sourceRef="Gateway_Merge" targetRef="ServiceTask_SendNotification" />
+    <bpmn:endEvent id="EndEvent_ProcessComplete" name="Process Complete">
+      <bpmn:incoming>Flow_198vayl</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_198vayl" sourceRef="ServiceTask_SendNotification" targetRef="EndEvent_ProcessComplete" />
+    <bpmn:sequenceFlow id="Flow_Score700" name="Score ≥ 700" sourceRef="Gateway_ScoreOK" targetRef="UserTask_ApproveCredit">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${creditScore &gt;= 700}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_4zh9tuh_Score700" name="Score &#60; 700" sourceRef="Gateway_ScoreOK" targetRef="UserTask_RejectApplication" />
+    <bpmn:sequenceFlow id="Flow_ApproveCredit_to_Merge" sourceRef="UserTask_ApproveCredit" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_RejectApplication_to_Merge" sourceRef="UserTask_RejectApplication" targetRef="Gateway_Merge" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_Credit_Approval">
+      <bpmndi:BPMNShape id="StartEvent_ApplicationSubmitted_di" bpmnElement="StartEvent_ApplicationSubmitted">
+        <dc:Bounds x="162" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="152" y="215" width="57" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ReviewApplication_di" bpmnElement="UserTask_ReviewApplication">
+        <dc:Bounds x="248" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_CheckCreditScore_di" bpmnElement="ServiceTask_CheckCreditScore">
+        <dc:Bounds x="398" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ScoreOK_di" bpmnElement="Gateway_ScoreOK" isMarkerVisible="true">
+        <dc:Bounds x="548" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="546" y="228" width="54" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ApproveCredit_di" bpmnElement="UserTask_ApproveCredit">
+        <dc:Bounds x="648" y="95" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_RejectApplication_di" bpmnElement="UserTask_RejectApplication">
+        <dc:Bounds x="648" y="225" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Merge_di" bpmnElement="Gateway_Merge" isMarkerVisible="true">
+        <dc:Bounds x="798" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="807" y="228" width="32" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_SendNotification_di" bpmnElement="ServiceTask_SendNotification">
+        <dc:Bounds x="898" y="160" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_ProcessComplete_di" bpmnElement="EndEvent_ProcessComplete">
+        <dc:Bounds x="1048" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1021" y="221" width="90" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1lcw4e5_di" bpmnElement="Flow_1lcw4e5">
+        <di:waypoint x="198" y="200" />
+        <di:waypoint x="248" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1e8hlwy_di" bpmnElement="Flow_1e8hlwy">
+        <di:waypoint x="348" y="200" />
+        <di:waypoint x="398" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_06mkjaa_di" bpmnElement="Flow_06mkjaa">
+        <di:waypoint x="498" y="200" />
+        <di:waypoint x="548" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_032c619_di" bpmnElement="Flow_032c619">
+        <di:waypoint x="848" y="200" />
+        <di:waypoint x="898" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_198vayl_di" bpmnElement="Flow_198vayl">
+        <di:waypoint x="998" y="200" />
+        <di:waypoint x="1048" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_00dcdlp_di" bpmnElement="Flow_Score700">
+        <di:waypoint x="573" y="175" />
+        <di:waypoint x="573" y="135" />
+        <di:waypoint x="648" y="135" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="561" y="128" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0mxqelc_di" bpmnElement="Flow_4zh9tuh_Score700">
+        <di:waypoint x="573" y="225" />
+        <di:waypoint x="573" y="265" />
+        <di:waypoint x="648" y="265" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="561" y="258" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1uakp54_di" bpmnElement="Flow_ApproveCredit_to_Merge">
+        <di:waypoint x="748" y="135" />
+        <di:waypoint x="823" y="135" />
+        <di:waypoint x="823" y="175" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1ht84cm_di" bpmnElement="Flow_RejectApplication_to_Merge">
+        <di:waypoint x="748" y="265" />
+        <di:waypoint x="823" y="265" />
+        <di:waypoint x="823" y="225" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

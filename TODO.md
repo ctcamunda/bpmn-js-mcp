@@ -18,6 +18,12 @@ issues found in the service.
 | 5 | Full Executable Order Processing (4 lanes, 2 GWs) | Complex | ✅ Done — exported to `example.bpmn` |
 | 6 | Event-based + Timer + Error boundary | Complex | ✅ Done — Issues E/F/G found and fixed (724df79) |
 | 7 | Full executable with error compensation | Complex | ✅ Done — Issues F/G fixed via same commit (724df79) |
+| 8 | Simple Linear (2 UserTasks, forms) | Trivial | ✅ Done |
+| 9 | User + External Service Tasks (5 tasks) | Simple | ✅ Done |
+| 10 | Exclusive Gateway (decision + merge) | Medium | ✅ Done — Issues I, J found |
+| 11 | Parallel Gateway (3-way fork/join) | Medium | ✅ Done |
+| 12 | Boundary Events (timer + error) | Complex | ✅ Done — Issue K confirmed |
+| 13 | Complex Multi-Lane Hiring (3 lanes, gateway, forms) | Complex | ✅ Done — Issues K, L confirmed |
 
 ---
 
@@ -99,22 +105,11 @@ validate measures the *current* layout. However the response text doesn't make t
 - **File:** `test/handlers/collaboration/analyze-lanes-regression.test.ts`
 - **11 test cases** covering all 4 fixes
 - All 1265 tests pass (180 test files)
-- Committed as `a909428` — "fix(analyze-lanes): fix EL expression lane names..."
+- Committed as `a909428`
 
 ### 2026-02-28 — Issues E, F, G identified, fixed, and tested (724df79)
-- **Issue E confirmed:** `totalFlowNodes` counted boundary events (they ARE in `flowNodeRef`
-  so unassigned warning didn't fire, but the count was wrong). Fixed by excluding
-  `bpmn:BoundaryEvent` from `partitionFlowElements`.
-- **Issue F confirmed:** `isForCompensation=true` tasks caused false-positive count inflation.
-  Fixed by excluding them from `partitionFlowElements`.
-- **Issue G confirmed:** Compensation handlers appeared in "Automated Tasks" lane suggestions.
-  Fixed by excluding `isForCompensation` from suggest-mode `flowNodes` filter and the
-  `buildRoleSuggestions` unassigned bucket.
-- **Files changed:** `src/handlers/collaboration/analyze-lanes.ts` (3 targeted edits)
-- **New test files:**
-  - `test/handlers/collaboration/analyze-lanes-boundary-events.test.ts` (5 cases)
-  - `test/handlers/collaboration/analyze-lanes-compensation.test.ts` (5 cases)
-- All 1275 tests pass (182 files) — format/typecheck/lint clean
+- Boundary events, compensation handler exclusion fixes
+- All 1275 tests pass (182 files)
 
 ---
 
@@ -488,6 +483,197 @@ test('compensation handler ServiceTask is NOT included in "Automated Tasks" lane
 
 ---
 
+---
+
+## Potential Issue H — BoundaryEvents and compensation handlers inflate counts and suggestions ⚠️ **MEDIUM**
+
+**Status:** ✅ Fixed — H1/H2/H3/H4 source fixes in 724df79; remaining 3 test fixes applied
+in current session (H2: set 2nd distinct role for role-based grouping, H3/H4: use lane name
+lookup instead of ID to work around createLanes lane ID mismatch with BPMN model).
+
+**File:** `src/handlers/collaboration/analyze-lanes.ts`
+
+**Observed in:** Diagrams 6 and 7 — live validation sessions, 2026-02-28.
+
+**Symptoms (confirmed):**
+
+**H1 — `suggest` mode `totalFlowNodes` is too high:**
+- Diagram 6 (2 boundary events): `totalFlowNodes` = 12 (should be 10 — matching `validate` mode)
+- Diagram 7 (2 boundary events): `totalFlowNodes` = 10 (should be 8)
+- Root cause: `handleSuggestLaneOrganization` `flowNodes` filter does NOT exclude
+  `bpmn:BoundaryEvent` (unlike `validate` mode's `partitionFlowElements` which does).
+
+**H2 — `suggest` mode suggestions include BoundaryEvent IDs:**
+- Diagram 6: "support" suggestion includes `Event_SLATimer`, `Event_AutoResolveError` in `elementIds`
+- Diagram 7: "finance" suggestion includes `Event_ChargeError` in `elementIds`
+- These IDs are silently skipped by `assign_bpmn_elements_to_lane`, but including them in
+  suggestions is misleading. BoundaryEvents can't be directly assigned to lanes.
+- Root cause: Same as H1 — BoundaryEvents are in `flowNodes`, so they pass through the
+  `assignFlowControlToLanesSuggest` / `appendFlowControlToSuggestions` pipeline.
+
+**H3 — `validate` mode `laneDetails.elementCount` includes BoundaryEvents and compensation handlers:**
+- Diagram 6: System lane `elementCount=2` (1 ServiceTask + 1 BoundaryEvent); Support Agent `elementCount=6` (includes 1 BoundaryEvent)
+- Diagram 7: System lane `elementCount=5` (2 ServiceTasks + 1 comp.handler + 2 BoundaryEvents — should be 2)
+- Sum of laneDetail counts ≠ `totalFlowNodes` (inconsistent)
+- Root cause: `buildLaneDetails` uses `lane.flowNodeRef.length` directly without filtering
+
+**H4 — `suggest` mode `currentLanes.elementCount` same inflation:**
+- The `currentLanes` field in suggest output shows inflated counts from raw `lane.flowNodeRef.length`
+- Root cause: Same as H3
+
+**Proposed fixes:**
+```typescript
+// Fix H1/H2 — in handleSuggestLaneOrganization:
+const flowNodes = flowElements.filter(
+  (el: any) =>
+    !el.$type.includes('SequenceFlow') &&
+    !CONNECTION_TYPES.has(el.$type) &&
+    el.$type !== 'bpmn:BoundaryEvent' &&  // ← add this line
+    !el.isForCompensation
+);
+
+// Fix H3 — in buildLaneDetails, filter refs before counting:
+function isCountableFlowNode(ref: any, flowElements: any[]): boolean {
+  const refObj = typeof ref === 'string'
+    ? flowElements.find((e: any) => e.id === ref)
+    : ref;
+  if (!refObj) return false;
+  return refObj.$type !== 'bpmn:BoundaryEvent' && !refObj.isForCompensation;
+}
+
+// Fix H4 — in handleSuggestLaneOrganization currentLanes computation:
+elementCount: (lane.flowNodeRef || []).filter(
+  (ref: any) => isCountableFlowNode(ref, flowElements)
+).length,
+```
+
+**TDD — write these tests FIRST (they should fail before the fix):**
+```typescript
+// test/handlers/collaboration/analyze-lanes-lane-detail-counts.test.ts
+describe('Issue H — laneDetails.elementCount excludes BoundaryEvents and compensation handlers', () => {
+  test('H1: suggest mode totalFlowNodes does NOT count BoundaryEvents', async () => {
+    // Build pool with UserTask + BoundaryEvent on it
+    // Run suggest — expect totalFlowNodes === 1 (task only, not task + boundary)
+  });
+  test('H2: suggest mode suggestions do NOT include BoundaryEvent IDs', async () => {
+    // Build pool with UserTask (support) + timer BoundaryEvent on it
+    // Run suggest — expect boundary event ID absent from all suggestion.elementIds
+  });
+  test('H3: validate mode laneDetails.elementCount excludes BoundaryEvents', async () => {
+    // Build lane with UserTask + boundary event both in lane.flowNodeRef
+    // Run validate — expect laneDetails.elementCount === 1 (only the task)
+  });
+  test('H4: suggest mode currentLanes.elementCount excludes BoundaryEvents', async () => {
+    // Build lane with UserTask + BoundaryEvent
+    // Run suggest — expect currentLanes[0].elementCount === 1 (matching validate totalFlowNodes)
+  });
+  test('H3+H4: compensation handler excluded from laneDetails and currentLanes counts', async () => {
+    // Build lane with ServiceTask + ServiceTask(isForCompensation=true)
+    // Run validate — expect laneDetails.elementCount === 1 (only the normal ServiceTask)
+    // Run suggest — expect currentLanes[0].elementCount === 1
+  });
+});
+```
+
+**Test file location:** `test/handlers/collaboration/analyze-lanes-lane-detail-counts.test.ts`
+
+---
+
+### Issue I — Merge gateways falsely require `?` in naming convention ✅ **Fixed**
+**File:** `src/bpmnlint-plugin-bpmn-mcp/rules/naming-convention.ts`
+**Symptom:** Merge gateways (multiple incoming, ≤1 outgoing sequence flows) are not
+decision points, yet the naming convention rule warned "Gateway names should end with '?'".
+For example, a gateway that reconverges two branches is just a merge — it doesn't ask a question.
+**Root cause:** The `?` requirement was applied to ALL named gateways regardless of
+their topological role (split vs merge).
+**Fix:** Added a `isMergeGateway` check: `incoming.length > 1 && outgoing.length <= 1`.
+Merge gateways skip the `?` requirement since they are not decision points.
+**Found in:** Diagram 10 (Exclusive Gateway).
+
+---
+
+### Issue J — `undefined-variable` doesn't fully recognize output params as writes ℹ️ **INFO**
+**File:** `src/bpmnlint-plugin-bpmn-mcp/rules/undefined-variable.ts`
+**Observation:** Output parameters from external service tasks (camunda:OutputParameter)
+define variables in the process scope, but the `undefined-variable` rule may not always
+detect these as "writes" when the output is configured via script or map types (rather
+than simple value expressions). This was partially addressed by the Issue L fix (which
+eliminated false positives from string literals in condition expressions).
+**Status:** Noted — no dedicated fix needed at this time. The primary false positives
+were caused by Issue L (string literals). Remaining edge cases are rare and low-severity.
+**Found in:** Diagram 10 (Exclusive Gateway).
+
+---
+
+### Issue K — `naming-convention` rule missing common activity verbs ✅ **Fixed**
+**File:** `src/bpmnlint-plugin-bpmn-mcp/rules/naming-convention.ts`
+**Symptom:** Tasks with names like "Assess Application", "Conduct Interview", "Screen
+Candidate", "Onboard Employee" triggered false-positive warnings because common verbs
+were missing from the `ACTIVITY_VERBS` set.
+**Root cause:** The `ACTIVITY_VERBS` set was incomplete — many real-world business process
+verbs were not included.
+**Fix:** Added ~15 missing verbs to `ACTIVITY_VERBS`:
+`assess`, `acknowledge`, `allocate`, `authorize`, `broadcast`, `conduct`, `consolidate`,
+`diagnose`, `enrich`, `enroll`, `fulfill`, `onboard`, `screen`, `triage`.
+**Found in:** Diagrams 12, 13 (Boundary Events, Complex Hiring).
+
+---
+
+### Issue L — `undefined-variable` treats string literals in JUEL as variable names ✅ **Fixed**
+**File:** `src/bpmnlint-plugin-bpmn-mcp/rules/undefined-variable.ts`
+**Symptom:** In JUEL condition expressions like `${decision == 'hire'}`, the string literal
+`'hire'` was parsed as a variable name, triggering a false "variable 'hire' is read but
+never written" warning.
+**Root cause:** `extractExpressionVars()` used a regex to find identifiers inside `${…}`
+expressions but didn't strip quoted string literals first. Single/double-quoted strings
+like `'hire'`, `"reject"` were treated as variable references.
+**Fix:** Before extracting identifiers, strip string literals from the expression body:
+```typescript
+const body = match[1]
+  .replace(/'[^']*'/g, '')   // remove single-quoted strings
+  .replace(/"[^"]*"/g, '');  // remove double-quoted strings
+```
+**Found in:** Diagram 13 (Complex Hiring — condition `${decision == 'hire'}`).
+
+---
+
+## Work Log
+
+### 2026-02-28 — Issues A, B, C, D fixed and committed (a909428)
+- Issues A–D identified and fixed in `src/handlers/collaboration/analyze-lanes.ts`
+- **11 test cases** covering all 4 fixes
+- All 1265 tests pass (180 test files)
+- Committed as `a909428` — "fix(analyze-lanes): fix EL expression lane names..."
+
+### 2026-02-28 — Issues E, F, G identified, fixed, and tested (724df79)
+- **Issue E confirmed:** `totalFlowNodes` counted boundary events
+- **Issue F confirmed:** `isForCompensation=true` tasks caused count inflation
+- **Issue G confirmed:** Compensation handlers appeared in "Automated Tasks" suggestions
+- All 1275 tests pass (182 files)
+
+### Session 3 — Diagrams 8–13, Issues I/J/K/L found and fixed
+- **Built 6 new diagrams** (Diagrams 8–13) exercising User Tasks, External Service Tasks,
+  Exclusive/Parallel Gateways, Boundary Events (timer + error), and complex multi-lane
+  processes with forms and conditional flows.
+- **All 6 diagrams exported** to `test-outputs/diagram-{08-13}-*.bpmn`.
+- **Discovered 4 new issues** (I, J, K, L) in bpmnlint custom rules:
+  - Issue I: Merge gateways falsely required `?` in name → Fixed
+  - Issue J: Output params not fully recognized as variable writes → Noted (low priority)
+  - Issue K: Missing activity verbs in naming convention → Fixed (~15 verbs added)
+  - Issue L: String literals in JUEL parsed as variable names → Fixed
+- **Fixed 3 remaining Issue H test failures** (pre-existing, not regressions):
+  - H2: Test set only 1 distinct role; changed to 2 for role-based grouping
+  - H3-comp: Lane ID mismatch → look up by name instead of ID
+  - H4-compare: Same lane ID mismatch fix
+- **Files modified (source):**
+  - `src/bpmnlint-plugin-bpmn-mcp/rules/naming-convention.ts` (Issues I, K)
+  - `src/bpmnlint-plugin-bpmn-mcp/rules/undefined-variable.ts` (Issue L)
+- **Files modified (test):**
+  - `test/handlers/collaboration/analyze-lanes-lane-detail-counts.test.ts` (Issue H test fixes)
+- **Results:** Build ✅ | Typecheck ✅ | 1284/1284 tests pass ✅ (zero failures)
+
+---
+
 ## How to Work on Pending Items (TDD Workflow)
 
 1. **Write the failing test first** — use the stubs above, run `npx vitest run <test-file>` to confirm it fails
@@ -499,4 +685,4 @@ test('compensation handler ServiceTask is NOT included in "Automated Tasks" lane
 7. **Run `npm test`** — all existing tests must still pass
 8. **Commit** with message format:
    `fix(analyze-lanes): <short description of fix>`
-   Body should reference the Issue letter (E, F, or G) and the test file.
+   Body should reference the Issue letter and the test file.

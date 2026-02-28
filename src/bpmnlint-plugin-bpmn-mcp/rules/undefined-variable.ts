@@ -101,7 +101,8 @@ function extractExpressionVars(expr: string): string[] {
   const exprPattern = /\$\{([^}]+)}/g;
   let match;
   while ((match = exprPattern.exec(expr)) !== null) {
-    const body = match[1];
+    // Remove string literals (single-quoted and double-quoted) before extracting identifiers
+    const body = match[1].replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
     const identPattern = /\b([a-zA-Z_]\w*)\b/g;
     let idMatch;
     while ((idMatch = identPattern.exec(body)) !== null) {

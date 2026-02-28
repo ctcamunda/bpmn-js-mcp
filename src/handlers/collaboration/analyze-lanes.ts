@@ -374,45 +374,16 @@ function buildRecommendation(
   return `Suggested organization achieves ${stats}. Consider organizing by business role (e.g. "Requester", "Approver", "System") rather than task type for better flow coherence.`;
 }
 
-// ── Main handler ───────────────────────────────────────────────────────────
-
-export async function handleSuggestLaneOrganization(
+/** Build currentLanes info and actionable nextSteps for suggest mode. */
+function buildSuggestLanesAndNextSteps(
+  process: any,
+  flowElements: any[],
+  suggestions: Array<{ laneName: string; elementIds: string[] }>,
   args: SuggestLaneOrganizationArgs
-): Promise<ToolResult> {
-  validateArgs(args, ['diagramId']);
-
-  const diagram = requireDiagram(args.diagramId);
-  const elementRegistry = getService(diagram.modeler, 'elementRegistry');
-  const canvas = getService(diagram.modeler, 'canvas');
-  const process = findProcess(elementRegistry, canvas, args.participantId);
-  if (!process) return jsonResult({ error: 'No process found in diagram', suggestions: [] });
-
-  const flowElements: any[] = process.flowElements || [];
-  const flowNodes = flowElements.filter(
-    (el: any) =>
-      !el.$type.includes('SequenceFlow') &&
-      !CONNECTION_TYPES.has(el.$type) &&
-      // Exclude compensation handler tasks — they are not part of the normal flow
-      // and must not appear in lane suggestions (e.g. "Automated Tasks").
-      !el.isForCompensation
-  );
-  const sequenceFlows = flowElements.filter((el: any) => el.$type === 'bpmn:SequenceFlow');
-
-  const laneMap = new Map<string, string>();
-
-  // Prefer role-based grouping (camunda:assignee / camunda:candidateGroups)
-  // when at least 2 distinct roles are found. Fall back to type-based grouping.
-  const roleSuggestions = buildRoleSuggestions(flowNodes, laneMap);
-  const groupingStrategy = roleSuggestions ? 'role' : 'type';
-  const suggestions = roleSuggestions ?? buildCategorySuggestions(flowNodes, laneMap);
-
-  assignFlowControlToLanesSuggest(flowNodes, laneMap);
-  appendFlowControlToSuggestions(flowNodes, laneMap, suggestions);
-
-  const { coherence, crossLane, intraLane } = calculateCoherence(sequenceFlows, laneMap);
-  const recommendation = buildRecommendation(suggestions.length, coherence, intraLane, crossLane);
-
-  // Collect current lane info (if any)
+): {
+  currentLanes: { name: string; elementCount: number }[];
+  nextSteps: Array<{ tool: string; description: string; args: Record<string, unknown> }>;
+} {
   const currentLanes: { name: string; elementCount: number }[] = [];
   const existingLaneIdByName = new Map<string, string>();
   const laneSets = (process.laneSets ?? []) as Array<{
@@ -423,7 +394,13 @@ export async function handleSuggestLaneOrganization(
       const laneName = lane.name || lane.id || '(unnamed)';
       currentLanes.push({
         name: laneName,
-        elementCount: (lane.flowNodeRef || []).length,
+        // Exclude BoundaryEvents (inherit host's lane) and compensation handlers
+        // from the displayed count to match totalFlowNodes from suggest mode.
+        elementCount: (lane.flowNodeRef || []).filter((ref: any) => {
+          const refObj =
+            typeof ref === 'string' ? flowElements.find((e: any) => e.id === ref) : ref;
+          return refObj && refObj.$type !== 'bpmn:BoundaryEvent' && !refObj.isForCompensation;
+        }).length,
       });
       if (lane.id) existingLaneIdByName.set(laneName, lane.id);
     }
@@ -456,6 +433,58 @@ export async function handleSuggestLaneOrganization(
       },
     });
   }
+
+  return { currentLanes, nextSteps };
+}
+
+// ── Main handler ───────────────────────────────────────────────────────────
+
+export async function handleSuggestLaneOrganization(
+  args: SuggestLaneOrganizationArgs
+): Promise<ToolResult> {
+  validateArgs(args, ['diagramId']);
+
+  const diagram = requireDiagram(args.diagramId);
+  const elementRegistry = getService(diagram.modeler, 'elementRegistry');
+  const canvas = getService(diagram.modeler, 'canvas');
+  const process = findProcess(elementRegistry, canvas, args.participantId);
+  if (!process) return jsonResult({ error: 'No process found in diagram', suggestions: [] });
+
+  const flowElements: any[] = process.flowElements || [];
+  const flowNodes = flowElements.filter(
+    (el: any) =>
+      !el.$type.includes('SequenceFlow') &&
+      !CONNECTION_TYPES.has(el.$type) &&
+      // BoundaryEvents inherit their host task's lane membership — exclude to avoid
+      // inflating totalFlowNodes and having them appear in role/type suggestions.
+      // (Matches the exclusion in partitionFlowElements used by validate mode.)
+      el.$type !== 'bpmn:BoundaryEvent' &&
+      // Exclude compensation handler tasks — they are not part of the normal flow
+      // and must not appear in lane suggestions (e.g. "Automated Tasks").
+      !el.isForCompensation
+  );
+  const sequenceFlows = flowElements.filter((el: any) => el.$type === 'bpmn:SequenceFlow');
+
+  const laneMap = new Map<string, string>();
+
+  // Prefer role-based grouping (camunda:assignee / camunda:candidateGroups)
+  // when at least 2 distinct roles are found. Fall back to type-based grouping.
+  const roleSuggestions = buildRoleSuggestions(flowNodes, laneMap);
+  const groupingStrategy = roleSuggestions ? 'role' : 'type';
+  const suggestions = roleSuggestions ?? buildCategorySuggestions(flowNodes, laneMap);
+
+  assignFlowControlToLanesSuggest(flowNodes, laneMap);
+  appendFlowControlToSuggestions(flowNodes, laneMap, suggestions);
+
+  const { coherence, crossLane, intraLane } = calculateCoherence(sequenceFlows, laneMap);
+  const recommendation = buildRecommendation(suggestions.length, coherence, intraLane, crossLane);
+
+  const { currentLanes, nextSteps } = buildSuggestLanesAndNextSteps(
+    process,
+    flowElements,
+    suggestions,
+    args
+  );
 
   const result: Record<string, any> = {
     totalFlowNodes: flowNodes.length,
@@ -563,8 +592,15 @@ function partitionFlowElements(flowElements: any[]): { flowNodes: any[]; sequenc
 function buildLaneDetails(lanes: any[], flowElements: any[]): LaneDetail[] {
   return lanes.map((lane: any) => {
     const refs = lane.flowNodeRef || [];
+    // Exclude BoundaryEvents (inherit host's lane membership) and compensation
+    // handler tasks (connected via associations, not normal flow) to align
+    // elementCount with the totalFlowNodes reported by partitionFlowElements.
+    const countableRefs = refs.filter((ref: any) => {
+      const refObj = typeof ref === 'string' ? flowElements.find((e: any) => e.id === ref) : ref;
+      return refObj && refObj.$type !== 'bpmn:BoundaryEvent' && !refObj.isForCompensation;
+    });
     const typeCount: Record<string, number> = {};
-    for (const ref of refs) {
+    for (const ref of countableRefs) {
       const refObj = typeof ref === 'string' ? flowElements.find((e: any) => e.id === ref) : ref;
       if (refObj) {
         const t = refObj.$type || 'unknown';
@@ -574,7 +610,7 @@ function buildLaneDetails(lanes: any[], flowElements: any[]): LaneDetail[] {
     return {
       laneId: lane.id,
       laneName: lane.name || lane.id,
-      elementCount: refs.length,
+      elementCount: countableRefs.length,
       elementTypes: typeCount,
     };
   });
