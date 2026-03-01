@@ -24,6 +24,14 @@ export interface LayoutMetrics {
 
   detourRatioAvg: number;
   gridSnapAvg: number; // 0..1, higher is better
+
+  // Alignment metrics (added for Camunda 7 layout quality)
+  horizontalMisalignments: number; // elements in same layer with >20px Y deviation
+  verticalImbalance: number; // asymmetry in gateway branch spacing (0 = perfect)
+
+  // Camunda 7 executability metrics (from bpmnlint)
+  lintErrors: number;
+  lintWarnings: number;
 }
 
 export interface ScenarioScore {

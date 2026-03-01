@@ -4,6 +4,8 @@ import {
   handleCreateDiagram,
   handleCreateLanes,
   handleLayoutDiagram,
+  handleSetProperties,
+  handleSetEventDefinition,
 } from '../handlers';
 import { clearDiagrams } from '../diagram-manager';
 import { parseToolJson } from './mcp-json';
@@ -42,6 +44,19 @@ async function connect(
   await handleConnect({ diagramId, sourceElementId, targetElementId, ...extra });
 }
 
+async function setProps(diagramId: string, elementId: string, properties: Record<string, any>) {
+  await handleSetProperties({ diagramId, elementId, properties });
+}
+
+async function setEventDef(
+  diagramId: string,
+  elementId: string,
+  eventDefinitionType: string,
+  properties?: Record<string, any>
+) {
+  await handleSetEventDefinition({ diagramId, elementId, eventDefinitionType, properties });
+}
+
 async function layout(diagramId: string) {
   await handleLayoutDiagram({ diagramId });
 }
@@ -53,6 +68,7 @@ const SERVICE_TASK = 'bpmn:ServiceTask';
 const EXCLUSIVE_GATEWAY = 'bpmn:ExclusiveGateway';
 const PARALLEL_GATEWAY = 'bpmn:ParallelGateway';
 const PARTICIPANT = 'bpmn:Participant';
+const BOUNDARY_EVENT = 'bpmn:BoundaryEvent';
 
 function s01Linear(): EvalScenario {
   return {
@@ -187,5 +203,123 @@ function s06Lanes(): EvalScenario {
 }
 
 export function getEvalScenarios(): EvalScenario[] {
-  return [s01Linear(), s02Exclusive(), s03Parallel(), s06Lanes()];
+  return [
+    s01Linear(),
+    s02Exclusive(),
+    s03Parallel(),
+    s04Camunda7Executable(),
+    s05TimerBoundary(),
+    s06Lanes(),
+  ];
+}
+
+/**
+ * S04: Camunda 7 executable process with proper implementations.
+ *
+ * Tests Camunda 7 executability requirements:
+ * - Service task with external task topic
+ * - User task with assignee
+ * - Proper gateway conditions
+ */
+function s04Camunda7Executable(): EvalScenario {
+  return {
+    scenarioId: 'S04',
+    name: 'Camunda 7 executable process',
+    build: async () => {
+      clearDiagrams();
+      const diagramId = await createDiagram('Eval S04 Camunda7');
+      const start = await add(diagramId, START_EVENT, 'Order Received');
+      const validate = await add(diagramId, SERVICE_TASK, 'Validate Order', {
+        afterElementId: start,
+      });
+      // Set external task topic for Camunda 7
+      await setProps(diagramId, validate, {
+        'camunda:type': 'external',
+        'camunda:topic': 'validate-order',
+      });
+
+      const review = await add(diagramId, USER_TASK, 'Review Order', { afterElementId: validate });
+      // Set assignee for Camunda 7
+      await setProps(diagramId, review, { 'camunda:assignee': 'sales-team' });
+
+      const decision = await add(diagramId, EXCLUSIVE_GATEWAY, 'Approved?', {
+        afterElementId: review,
+      });
+      const approve = await add(diagramId, SERVICE_TASK, 'Process Order', {
+        afterElementId: decision,
+      });
+      await setProps(diagramId, approve, {
+        'camunda:type': 'external',
+        'camunda:topic': 'process-order',
+      });
+
+      const reject = await add(diagramId, SERVICE_TASK, 'Send Rejection', {
+        afterElementId: decision,
+      });
+      await setProps(diagramId, reject, {
+        'camunda:type': 'external',
+        'camunda:topic': 'send-rejection',
+      });
+
+      const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: approve });
+
+      await connect(diagramId, start, validate);
+      await connect(diagramId, validate, review);
+      await connect(diagramId, review, decision);
+      await connect(diagramId, decision, approve, {
+        label: 'Yes',
+        conditionExpression: '${approved == true}',
+      });
+      await connect(diagramId, decision, reject, { label: 'No', isDefault: true });
+      await connect(diagramId, approve, end);
+      await connect(diagramId, reject, end);
+
+      await layout(diagramId);
+      return { diagramId };
+    },
+  };
+}
+
+/**
+ * S05: Timer boundary event with escalation path.
+ *
+ * Tests boundary event layout and timer configuration:
+ * - Timer boundary event attached to user task
+ * - Escalation path from timeout
+ * - Proper timer definition (ISO 8601)
+ */
+function s05TimerBoundary(): EvalScenario {
+  return {
+    scenarioId: 'S05',
+    name: 'Timer boundary event escalation',
+    build: async () => {
+      clearDiagrams();
+      const diagramId = await createDiagram('Eval S05 Timer');
+      const start = await add(diagramId, START_EVENT, 'Start');
+      const task = await add(diagramId, USER_TASK, 'Wait for Approval', { afterElementId: start });
+      await setProps(diagramId, task, { 'camunda:assignee': 'manager' });
+
+      // Add timer boundary event
+      const timer = await add(diagramId, BOUNDARY_EVENT, 'Timeout', { hostElementId: task });
+      await setEventDef(diagramId, timer, 'bpmn:TimerEventDefinition', { timeDuration: 'PT1H' });
+
+      const normalEnd = await add(diagramId, END_EVENT, 'Approved', { afterElementId: task });
+      const escalate = await add(diagramId, SERVICE_TASK, 'Escalate', { afterElementId: timer });
+      await setProps(diagramId, escalate, {
+        'camunda:type': 'external',
+        'camunda:topic': 'escalate-approval',
+      });
+      const escalateEnd = await add(diagramId, END_EVENT, 'Escalated', {
+        afterElementId: escalate,
+      });
+
+      await connect(diagramId, start, task);
+      await connect(diagramId, task, normalEnd);
+      await connect(diagramId, timer, escalate);
+      await connect(diagramId, escalate, escalateEnd);
+
+      await layout(diagramId);
+      return { diagramId };
+    },
+  };
 }

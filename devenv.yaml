@@ -1,10 +1,4 @@
 inputs:
   nixpkgs:
     url: github:nixos/nixpkgs
-  devenv-module-devcontainer:
-    url: github:datakurre/devenv-module-devcontainer
-    flake: false
-allowUnfree: true
-imports:
-  - devenv-module-devcontainer
 profile: shell

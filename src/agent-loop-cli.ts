@@ -90,18 +90,40 @@ function hardRevert(repoDir: string) {
 
 function summarizeReport(report: EvalReport): string {
   const worst = [...report.scenarios].sort((a, b) => a.score - b.score)[0];
-  return [
+  const lines = [
     `Aggregate: avg=${report.aggregate.scoreAvg} min=${report.aggregate.scoreMin}`,
     `Worst: ${worst.scenarioId} ${worst.name} score=${worst.score} grade=${worst.grade}`,
     `Worst metrics: overlaps=${worst.metrics.overlaps}, crossings=${worst.metrics.crossings}, diagonalSegments=${worst.metrics.diagonalSegments}, bendCount=${worst.metrics.bendCount}, detourRatioAvg=${worst.metrics.detourRatioAvg}, nearMisses=${worst.metrics.nearMisses}, gridSnapAvg=${worst.metrics.gridSnapAvg}`,
-  ].join('\n');
+  ];
+  // Include alignment and lint metrics if present
+  if (worst.metrics.horizontalMisalignments !== undefined) {
+    lines.push(`Alignment: horizontalMisalignments=${worst.metrics.horizontalMisalignments}, verticalImbalance=${worst.metrics.verticalImbalance}`);
+  }
+  if (worst.metrics.lintErrors !== undefined) {
+    lines.push(`Camunda 7 lint: errors=${worst.metrics.lintErrors}, warnings=${worst.metrics.lintWarnings}`);
+  }
+  return lines.join('\n');
 }
 
 function buildPrompt(report: EvalReport, outputDir: string): string {
   const worst = [...report.scenarios].sort((a, b) => a.score - b.score)[0];
-  return [
+  const hasCamunda7Issues =
+    (worst.metrics.lintErrors ?? 0) > 0 || (worst.metrics.lintWarnings ?? 0) > 0;
+  const hasLayoutIssues =
+    worst.metrics.overlaps > 0 ||
+    worst.metrics.crossings > 0 ||
+    worst.metrics.horizontalMisalignments > 0 ||
+    worst.metrics.verticalImbalance > 1;
+
+  const lines = [
     'You are improving an open-source TypeScript project that lays out BPMN diagrams headlessly.',
     'Your task: make targeted edits to the TypeScript source files to improve the layout quality score.',
+    '',
+    'GOALS (in priority order):',
+    '  1. Produce Camunda 7 compatible executable BPMN (minimize lint errors/warnings)',
+    '  2. Create balanced, aligned layouts (elements in same layer at same Y)',
+    '  3. Minimize flow/connection overlap and crossings',
+    '  4. Use existing bpmn-js layout (AutoPlace, ManhattanLayout) - no custom algorithms',
     '',
     'You have access to BPMN MCP tools (bpmn-js-mcp server). Use them to:',
     '  1. Import any generated BPMN file with import_bpmn_xml (filePath parameter)',
@@ -114,14 +136,45 @@ function buildPrompt(report: EvalReport, outputDir: string): string {
     '- Do not change the scoring weights in src/eval/score.ts.',
     '- Keep changes minimal and focused on the layout engine in src/rebuild/.',
     '- Do not add new npm packages.',
+    '- Do NOT build custom layout algorithms - leverage bpmn-js AutoPlace and ManhattanLayout.',
     '',
     'Context: current eval report summary:',
     summarizeReport(report),
     '',
     `Focus on improving the worst scenario: ${worst.scenarioId} ${worst.name}.`,
     `You can find its BPMN artifact in: ${outputDir}`,
-    'Typical fix areas: routing waypoints, overlap avoidance, and layout spacing in src/rebuild/.',
-  ].join('\n');
+  ];
+
+  // Add specific guidance based on issues detected
+  if (hasCamunda7Issues) {
+    lines.push('');
+    lines.push('⚠ CAMUNDA 7 ISSUES DETECTED:');
+    lines.push(`  - ${worst.metrics.lintErrors} errors, ${worst.metrics.lintWarnings} warnings`);
+    lines.push('  - Check that scenarios in src/eval/scenarios.ts set proper Camunda 7 properties');
+    lines.push('  - Service tasks need camunda:type + camunda:topic or camunda:class');
+    lines.push('  - User tasks should have camunda:assignee or camunda:candidateGroups');
+    lines.push('  - Timer events need timeDuration/timeDate/timeCycle');
+  }
+
+  if (hasLayoutIssues) {
+    lines.push('');
+    lines.push('⚠ LAYOUT ISSUES DETECTED:');
+    if (worst.metrics.horizontalMisalignments > 0) {
+      lines.push(`  - ${worst.metrics.horizontalMisalignments} horizontal misalignments (elements in same column not at same Y)`);
+    }
+    if (worst.metrics.verticalImbalance > 1) {
+      lines.push(`  - Vertical imbalance ${worst.metrics.verticalImbalance.toFixed(2)} (gateway branches not centered)`);
+    }
+    if (worst.metrics.crossings > 0) {
+      lines.push(`  - ${worst.metrics.crossings} connection crossings`);
+    }
+    lines.push('  - Fix areas: src/rebuild/positioning.ts, src/rebuild/engine.ts');
+  }
+
+  lines.push('');
+  lines.push('Typical fix areas: routing waypoints, overlap avoidance, and layout spacing in src/rebuild/.');
+
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------

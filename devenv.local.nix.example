@@ -1,8 +1,14 @@
 {
   profiles.devcontainer.module = {
-    devcontainer.tweaks = [ "podman" "vscode" "gpg-agent" ];
+    devcontainer.enable = true;
+    devcontainer.tweaks = [
+      "gpg-agent"
+      "podman"
+      "vscode"
+    ];
+    devcontainer.networkMode = "host";
     devcontainer.settings.customizations.vscode.extensions = [
-      "bbenoist.Nix"
+      "jnoortheen.nix-ide"
       "GitHub.copilot"
       "GitHub.copilot-chat"
       "mkhl.direnv"

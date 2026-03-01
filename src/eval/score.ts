@@ -184,12 +184,122 @@ function computeGridSnapAvg(shapes: ListedElement[]): number {
   return gridSnaps.length ? gridSnaps.reduce((a, b) => a + b, 0) / gridSnaps.length : 1;
 }
 
-export function computeLayoutMetrics(elements: ListedElement[]): LayoutMetrics {
+/**
+ * Compute horizontal alignment metric.
+ *
+ * Groups elements by approximate X position (layer) and counts how many
+ * pairs within the same layer have Y positions that differ by more than
+ * the alignment threshold (20px).
+ *
+ * Well-aligned diagrams have elements in the same column at similar Y levels.
+ */
+function computeHorizontalMisalignments(shapes: ListedElement[]): number {
+  const LAYER_TOLERANCE = 30; // elements within 30px X are in same layer
+  const ALIGNMENT_THRESHOLD = 20; // Y deviation threshold for misalignment
+
+  // Group shapes by approximate X position (layer)
+  const layers = new Map<number, ListedElement[]>();
+  for (const s of shapes) {
+    if (s.x === undefined || s.y === undefined) continue;
+    // Find or create layer bucket
+    let layerKey = -1;
+    for (const key of layers.keys()) {
+      if (Math.abs(s.x - key) <= LAYER_TOLERANCE) {
+        layerKey = key;
+        break;
+      }
+    }
+    if (layerKey === -1) {
+      layerKey = s.x;
+      layers.set(layerKey, []);
+    }
+    layers.get(layerKey)!.push(s);
+  }
+
+  // Count misaligned pairs within each layer
+  let misalignments = 0;
+  for (const layer of layers.values()) {
+    if (layer.length < 2) continue;
+    for (let i = 0; i < layer.length; i++) {
+      for (let j = i + 1; j < layer.length; j++) {
+        const yDiff = Math.abs((layer[i].y ?? 0) - (layer[j].y ?? 0));
+        if (yDiff > ALIGNMENT_THRESHOLD) {
+          misalignments++;
+        }
+      }
+    }
+  }
+
+  return misalignments;
+}
+
+/**
+ * Compute vertical balance metric for gateway split patterns.
+ *
+ * For each gateway that splits to multiple branches, measures how
+ * symmetrically the branches are distributed around the gateway's Y center.
+ *
+ * Returns the total imbalance score (0 = perfectly balanced).
+ */
+function computeVerticalImbalance(shapes: ListedElement[], flows: ListedElement[]): number {
+  // Build adjacency from flows
+  const outgoing = new Map<string, string[]>();
+  for (const f of flows) {
+    if (!f.sourceId || !f.targetId) continue;
+    if (!outgoing.has(f.sourceId)) outgoing.set(f.sourceId, []);
+    outgoing.get(f.sourceId)!.push(f.targetId);
+  }
+
+  // Build element lookup
+  const elementsById = new Map<string, ListedElement>();
+  for (const s of shapes) elementsById.set(s.id, s);
+
+  let totalImbalance = 0;
+
+  // Find gateways with multiple outgoing flows (splits)
+  for (const s of shapes) {
+    if (!s.type?.includes('Gateway')) continue;
+    const targets = outgoing.get(s.id) ?? [];
+    if (targets.length < 2) continue;
+
+    // Get Y positions of targets
+    const targetYs: number[] = [];
+    for (const tid of targets) {
+      const t = elementsById.get(tid);
+      if (t?.y !== undefined && t?.height !== undefined) {
+        targetYs.push(t.y + t.height / 2); // center Y
+      }
+    }
+
+    if (targetYs.length < 2) continue;
+
+    // Gateway center Y
+    const gatewayY = (s.y ?? 0) + (s.height ?? 0) / 2;
+
+    // Measure imbalance: average deviation from gateway center
+    const deviations = targetYs.map((y) => y - gatewayY);
+    const avgDeviation = deviations.reduce((a, b) => a + b, 0) / deviations.length;
+
+    // Imbalance is how far the average deviation is from 0
+    // (0 means branches are centered around gateway)
+    totalImbalance += Math.abs(avgDeviation) / 50; // normalize to ~1 per 50px offset
+  }
+
+  return totalImbalance;
+}
+
+export function computeLayoutMetrics(
+  elements: ListedElement[],
+  lintErrors = 0,
+  lintWarnings = 0
+): LayoutMetrics {
   const { shapes, flows } = splitElements(elements);
   const { overlaps, nearMisses } = computeOverlapAndNearMisses(shapes);
   const { flowSegments, bendCount, diagonalSegments, detourRatioAvg } = buildFlowSegments(flows);
   const crossings = computeCrossings(flowSegments);
   const gridSnapAvg = computeGridSnapAvg(shapes);
+  const horizontalMisalignments = computeHorizontalMisalignments(shapes);
+  const verticalImbalance = computeVerticalImbalance(shapes, flows);
 
   return {
     nodeCount: shapes.length,
@@ -201,6 +311,10 @@ export function computeLayoutMetrics(elements: ListedElement[]): LayoutMetrics {
     diagonalSegments,
     detourRatioAvg,
     gridSnapAvg,
+    horizontalMisalignments,
+    verticalImbalance,
+    lintErrors,
+    lintWarnings,
   };
 }
 
@@ -223,6 +337,14 @@ export function scoreLayout(metrics: LayoutMetrics): {
 
   // Grid snap: 1 is ideal.
   score -= (1 - metrics.gridSnapAvg) * 10;
+
+  // Alignment penalties (new metrics for balanced layout)
+  score -= metrics.horizontalMisalignments * 3;
+  score -= metrics.verticalImbalance * 2;
+
+  // Camunda 7 executability penalties (lint integration)
+  score -= metrics.lintErrors * 15;
+  score -= metrics.lintWarnings * 3;
 
   score = clamp(score, 0, 100);
 

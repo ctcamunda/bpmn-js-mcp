@@ -1,15 +1,13 @@
 { ... }:
 let
   shell = { pkgs, ... }: {
-    languages.javascript.enable = true;
-    languages.javascript.npm.enable = true;
-
-    packages = with pkgs; [
-      github-copilot-cli
+    packages = [
+      pkgs.nodejs
+      pkgs.github-copilot-cli
     ];
 
     # Pre-commit hooks for code quality
-    pre-commit.hooks = {
+    git-hooks.hooks = {
       # ESLint with auto-fix
       eslint = {
         enable = true;
@@ -18,7 +16,7 @@ let
         files = "\\.(ts|js|mjs)$";
         pass_filenames = true;
       };
-      
+
       # Prettier formatting
       prettier = {
         enable = true;
@@ -27,7 +25,7 @@ let
         files = "\\.(ts|js|mjs|json|md)$";
         pass_filenames = true;
       };
-      
+
       # TypeScript type-checking (fast check on changed files only)
       typecheck = {
         enable = true;
@@ -42,8 +40,5 @@ in
 {
   profiles.shell.module = {
     imports = [ shell ];
-  };
-  profiles.devcontainer.module = {
-    devcontainer.enable = true;
   };
 }

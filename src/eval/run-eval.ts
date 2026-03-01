@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { handleExportBpmn, handleListElements } from '../handlers';
+import { getDiagram } from '../diagram-manager';
+import { lintDiagramFlat } from '../linter';
 import { parseToolJson } from './mcp-json';
 import { getEvalScenarios } from './scenarios';
 import type { EvalConfig, EvalReport, ListedElement, ScenarioScore } from './types';
@@ -52,7 +54,21 @@ export async function runEval(config: EvalConfig): Promise<EvalReport> {
     const listJson = parseToolJson<any>(await handleListElements({ diagramId }));
     const listed = toListedElements(listJson);
 
-    const metrics = computeLayoutMetrics(listed);
+    // Run lint to get Camunda 7 executability metrics
+    const diagram = getDiagram(diagramId);
+    let lintErrors = 0;
+    let lintWarnings = 0;
+    if (diagram) {
+      try {
+        const issues = await lintDiagramFlat(diagram);
+        lintErrors = issues.filter((i) => i.severity === 'error').length;
+        lintWarnings = issues.filter((i) => i.severity === 'warning').length;
+      } catch {
+        // Lint failures are non-fatal for eval
+      }
+    }
+
+    const metrics = computeLayoutMetrics(listed, lintErrors, lintWarnings);
     const { score, grade } = scoreLayout(metrics);
 
     const artifacts = config.exportArtifacts
@@ -89,6 +105,7 @@ export async function runEval(config: EvalConfig): Promise<EvalReport> {
         ...s.metrics,
         detourRatioAvg: round3(s.metrics.detourRatioAvg),
         gridSnapAvg: round3(s.metrics.gridSnapAvg),
+        verticalImbalance: round3(s.metrics.verticalImbalance),
       },
       score: round2(s.score),
     })),
