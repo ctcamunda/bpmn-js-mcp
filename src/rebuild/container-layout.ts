@@ -271,10 +271,13 @@ export function collectExceptionChainIds(boundaryInfos: BoundaryEventInfo[]): Se
 
 /**
  * Layout a single connection, catching ManhattanLayout docking errors.
+ * Resets stale waypoints before layout to ensure ManhattanLayout computes
+ * fresh routing based on current element positions.
  * Returns true if the connection was laid out successfully, false on error.
  */
 function layoutConnectionSafe(modeling: Modeling, connElement: any): boolean {
   try {
+    resetStaleBoundaryWaypoints(connElement);
     modeling.layoutConnection(connElement);
     return true;
   } catch {
@@ -282,6 +285,45 @@ function layoutConnectionSafe(modeling: Modeling, connElement: any): boolean {
     // connection waypoints are inconsistent. Skip silently.
     return false;
   }
+}
+
+/**
+ * Reset stale waypoints on boundary event / exception chain connections.
+ *
+ * After the rebuild engine repositions boundary events and their exception
+ * chain elements, the connection waypoints still reflect pre-layout
+ * positions.  Detect backward detours (waypoints going far left of both
+ * source and target) and reset to center-to-center so ManhattanLayout
+ * can compute a clean path.
+ */
+function resetStaleBoundaryWaypoints(conn: any): void {
+  const source = conn.source;
+  const target = conn.target;
+  if (!source || !target) return;
+
+  const wps = conn.waypoints;
+  if (!wps || wps.length < 3) return;
+
+  // Check for backward detour: intermediate waypoints go far left
+  // of both source and target elements
+  const leftBound = Math.min(source.x, target.x);
+  const hasBackwardDetour = wps.slice(1, -1).some((wp: any) => wp.x < leftBound - 5);
+
+  if (!hasBackwardDetour) return;
+
+  // Reset to L-shaped orthogonal path.  A 2-point diagonal is kept as-is
+  // by ManhattanLayout in headless mode, so we must provide the bends.
+  const sourceCenterX = source.x + (source.width || 0) / 2;
+  const sourceCenterY = source.y + (source.height || 0) / 2;
+  const targetCenterX = target.x + (target.width || 0) / 2;
+  const targetCenterY = target.y + (target.height || 0) / 2;
+
+  // Route: down from source to target Y, then across to target X
+  conn.waypoints = [
+    { x: sourceCenterX, y: sourceCenterY, original: { x: sourceCenterX, y: sourceCenterY } },
+    { x: sourceCenterX, y: targetCenterY },
+    { x: targetCenterX, y: targetCenterY, original: { x: targetCenterX, y: targetCenterY } },
+  ];
 }
 
 /**

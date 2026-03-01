@@ -27,6 +27,10 @@ export default function noDuplicateNamedFlowNodes() {
       const name = el.name?.trim();
       if (!name) continue; // Skip unnamed elements
 
+      // Skip sequence flows — duplicate labels like "Yes"/"No" on different
+      // gateway branches are perfectly valid and common in BPMN
+      if (isType(el, 'bpmn:SequenceFlow')) continue;
+
       const type = el.$type || '';
       const key = `${type}|${name}`;
 

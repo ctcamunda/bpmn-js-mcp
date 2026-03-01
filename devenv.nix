@@ -1,8 +1,12 @@
 { ... }:
 let
-  shell = { ... }: {
+  shell = { pkgs, ... }: {
     languages.javascript.enable = true;
     languages.javascript.npm.enable = true;
+
+    packages = with pkgs; [
+      github-copilot-cli
+    ];
 
     # Pre-commit hooks for code quality
     pre-commit.hooks = {

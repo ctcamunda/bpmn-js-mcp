@@ -216,6 +216,14 @@ function collectVarsFromElement(el: any): VarRef[] {
 
   refs.push(...collectFromExtensions(el));
 
+  // camunda:initiator on start events → write (defines the process variable)
+  if (isType(el, 'bpmn:StartEvent')) {
+    const initiator = el.$attrs?.['camunda:initiator'] ?? el.initiator;
+    if (initiator && typeof initiator === 'string') {
+      refs.push({ name: initiator, elementId, access: 'write' });
+    }
+  }
+
   // Script task result variable → write
   const resultVar = el.$attrs?.['camunda:resultVariable'] ?? el.resultVariable;
   if (resultVar && typeof resultVar === 'string') {

@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint check format format-check watch start clean prepare test test-watch coverage update-snapshots bundle-size all
+.PHONY: help install build typecheck lint check format format-check watch start clean prepare test test-watch coverage update-snapshots bundle-size eval eval-ci agent-loop all
 
 # Default target
 help:
@@ -18,6 +18,9 @@ help:
 	@echo "  make coverage     - Run tests with coverage report"
 	@echo "  make update-snapshots - Regenerate layout golden files"
 	@echo "  make bundle-size  - Report dist/index.js bundle size"
+	@echo "  make eval         - Generate layout score report + artifacts"
+	@echo "  make eval-ci      - Run eval with a minimum score gate"
+	@echo "  make agent-loop   - Iterate improvements using Copilot CLI"
 	@echo "  make clean        - Remove dist/ and node_modules/"
 	@echo "  make all          - Install and build"
 
@@ -85,6 +88,18 @@ update-snapshots: node_modules
 # Report bundle size after building
 bundle-size: build
 	@npm run bundle-size --silent
+
+# Generate deterministic evaluation diagrams + score report
+eval: build
+	npm run eval
+
+# CI gate for regression detection (tune the threshold as the scorer evolves)
+eval-ci: build
+	npm run eval:ci
+
+# Self-reinforcing loop (requires authenticated `copilot` CLI)
+agent-loop: build
+	npm run agent-loop
 
 # Clean build artifacts
 clean:

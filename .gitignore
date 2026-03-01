@@ -33,6 +33,14 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# Eval harness output (generated)
+test-outputs/eval/
+
+# Ignore committed BPMN snapshots under test-outputs
+# Keep `test-outputs/eval/` behaviour intact while preventing accidental
+# commits of .bpmn snapshot files created during development.
+test-outputs/*.bpmn
+
 # Devenv
 .devenv*
 devenv.local.nix

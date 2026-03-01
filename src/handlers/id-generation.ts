@@ -21,15 +21,31 @@ function generateRandomPart(): string {
 
 /**
  * Convert a human-readable name into a PascalCase slug suitable for BPMN IDs.
- * Strips non-alphanumeric chars, collapses whitespace, PascalCases each word.
+ * Treats whitespace, hyphens, and underscores as word boundaries.
+ * Strips remaining non-alphanumeric chars, PascalCases each word.
+ *
+ * Single-letter fragments from hyphen splits (e.g. "E" from "E-mail")
+ * are merged with the following word to avoid awkward IDs like "EMail".
  */
 function toPascalSlug(name: string): string {
-  return name
-    .replace(/[^a-zA-Z0-9\s]/g, '')
+  const words = name
+    .replace(/[^a-zA-Z0-9\s\-_]/g, '')
     .trim()
-    .split(/\s+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join('');
+    .split(/[\s\-_]+/)
+    .filter((w) => w.length > 0);
+
+  // Merge single-letter words with the next word (e.g. ["E", "mail"] → ["Email"])
+  const merged: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    if (words[i].length === 1 && i + 1 < words.length) {
+      merged.push(words[i] + words[i + 1]);
+      i++; // skip next
+    } else {
+      merged.push(words[i]);
+    }
+  }
+
+  return merged.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
 }
 
 /** Map full BPMN type to a short prefix for element IDs. */

@@ -134,6 +134,17 @@ export default tseslint.config(
     },
   },
 
+  // ── Rebuild layout engine — algorithmic and inherently branchy ───────────
+  {
+    files: ['src/rebuild/engine.ts'],
+    rules: {
+      complexity: ['error', 60],
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
+      'sonarjs/cognitive-complexity': 'off',
+    },
+  },
+
   // ── ELK layout engine — algorithmic code with inherent complexity ────────
   {
     files: ['src/elk/**/*.ts'],

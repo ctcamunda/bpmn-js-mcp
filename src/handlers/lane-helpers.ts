@@ -10,15 +10,21 @@ import type { BpmnElement, ElementRegistry } from '../bpmn-types';
 /**
  * Remove an element's business object from all lanes' flowNodeRef lists.
  *
- * This ensures an element is not double-registered when moving between lanes.
+ * Uses ID-based comparison instead of reference equality to avoid
+ * duplicate lane membership when moddle proxies differ from the
+ * objects stored by bpmn-js's internal lane handlers.
  */
 export function removeFromAllLanes(elementRegistry: ElementRegistry, elementBo: any): void {
+  const elementId = elementBo?.id ?? elementBo;
   const allLanes = (elementRegistry as any).filter((el: BpmnElement) => el.type === 'bpmn:Lane');
   for (const lane of allLanes) {
     const refs = lane.businessObject?.flowNodeRef;
     if (Array.isArray(refs)) {
-      const idx = refs.indexOf(elementBo);
-      if (idx >= 0) refs.splice(idx, 1);
+      for (let i = refs.length - 1; i >= 0; i--) {
+        if (refs[i] === elementBo || refs[i]?.id === elementId) {
+          refs.splice(i, 1);
+        }
+      }
     }
   }
 }
@@ -27,13 +33,16 @@ export function removeFromAllLanes(elementRegistry: ElementRegistry, elementBo: 
  * Add an element's business object to a lane's flowNodeRef list.
  *
  * Idempotent: does nothing if the element is already in the lane.
+ * Uses ID-based comparison for the idempotency check to avoid
+ * duplicates from reference-inequality with moddle proxies.
  */
 export function addToLane(lane: BpmnElement, elementBo: any): void {
   const laneBo = lane.businessObject;
   if (!laneBo) return;
   const refs: any[] = (laneBo.flowNodeRef as any[] | undefined) || [];
   if (!laneBo.flowNodeRef) laneBo.flowNodeRef = refs;
-  if (!refs.includes(elementBo)) refs.push(elementBo);
+  const elementId = elementBo?.id;
+  if (!refs.some((r) => r === elementBo || r?.id === elementId)) refs.push(elementBo);
 }
 
 /**
