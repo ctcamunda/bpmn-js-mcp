@@ -79,8 +79,11 @@ function s01Linear(): EvalScenario {
       const diagramId = await createDiagram('Eval S01 Linear');
       const start = await add(diagramId, START_EVENT, 'Start');
       const t1 = await add(diagramId, USER_TASK, 'Collect Info', { afterElementId: start });
+      await setProps(diagramId, t1, { 'camunda:assignee': 'user' });
       const t2 = await add(diagramId, SERVICE_TASK, 'Validate', { afterElementId: t1 });
+      await setProps(diagramId, t2, { 'camunda:type': 'external', 'camunda:topic': 'validate' });
       const t3 = await add(diagramId, USER_TASK, 'Approve', { afterElementId: t2 });
+      await setProps(diagramId, t3, { 'camunda:assignee': 'approver' });
       const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: t3 });
 
       await connect(diagramId, start, t1);
@@ -102,9 +105,11 @@ function s02Exclusive(): EvalScenario {
       clearDiagrams();
       const diagramId = await createDiagram('Eval S02 Exclusive');
       const start = await add(diagramId, START_EVENT, 'Start');
-      const gw = await add(diagramId, EXCLUSIVE_GATEWAY, 'Decision', { afterElementId: start });
-      const yes = await add(diagramId, USER_TASK, 'Yes Path', { afterElementId: gw });
-      const no = await add(diagramId, USER_TASK, 'No Path', { afterElementId: gw });
+      const gw = await add(diagramId, EXCLUSIVE_GATEWAY, 'Approved?', { afterElementId: start });
+      const yes = await add(diagramId, USER_TASK, 'Process Approval', { afterElementId: gw });
+      await setProps(diagramId, yes, { 'camunda:assignee': 'user' });
+      const no = await add(diagramId, USER_TASK, 'Handle Rejection', { afterElementId: gw });
+      await setProps(diagramId, no, { 'camunda:assignee': 'user' });
       const merge = await add(diagramId, EXCLUSIVE_GATEWAY, 'Merge', { afterElementId: yes });
       const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: merge });
 
@@ -133,9 +138,12 @@ function s03Parallel(): EvalScenario {
       const diagramId = await createDiagram('Eval S03 Parallel');
       const start = await add(diagramId, START_EVENT, 'Start');
       const split = await add(diagramId, PARALLEL_GATEWAY, 'Split', { afterElementId: start });
-      const b1 = await add(diagramId, USER_TASK, 'Branch 1', { afterElementId: split });
-      const b2 = await add(diagramId, SERVICE_TASK, 'Branch 2', { afterElementId: split });
-      const b3 = await add(diagramId, USER_TASK, 'Branch 3', { afterElementId: split });
+      const b1 = await add(diagramId, USER_TASK, 'Complete Step A', { afterElementId: split });
+      await setProps(diagramId, b1, { 'camunda:assignee': 'user' });
+      const b2 = await add(diagramId, SERVICE_TASK, 'Validate Data', { afterElementId: split });
+      await setProps(diagramId, b2, { 'camunda:type': 'external', 'camunda:topic': 'branch-2' });
+      const b3 = await add(diagramId, USER_TASK, 'Send Notification', { afterElementId: split });
+      await setProps(diagramId, b3, { 'camunda:assignee': 'user' });
       const join = await add(diagramId, PARALLEL_GATEWAY, 'Join', { afterElementId: b1 });
       const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: join });
 
@@ -176,16 +184,18 @@ function s06Lanes(): EvalScenario {
         participantId: participant,
         laneId: laneA,
       });
-      const taskA = await add(diagramId, USER_TASK, 'Task A', {
+      const taskA = await add(diagramId, USER_TASK, 'Process Request', {
         participantId: participant,
         laneId: laneA,
         afterElementId: start,
       });
-      const taskB = await add(diagramId, USER_TASK, 'Task B', {
+      await setProps(diagramId, taskA, { 'camunda:assignee': 'lane-a-user' });
+      const taskB = await add(diagramId, USER_TASK, 'Handle Follow-up', {
         participantId: participant,
         laneId: laneB,
         afterElementId: taskA,
       });
+      await setProps(diagramId, taskB, { 'camunda:assignee': 'lane-b-user' });
       const end = await add(diagramId, END_EVENT, 'Done', {
         participantId: participant,
         laneId: laneB,
@@ -261,7 +271,8 @@ function s04Camunda7Executable(): EvalScenario {
         'camunda:topic': 'send-rejection',
       });
 
-      const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: approve });
+      const merge = await add(diagramId, EXCLUSIVE_GATEWAY, 'Merge', { afterElementId: approve });
+      const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: merge });
 
       await connect(diagramId, start, validate);
       await connect(diagramId, validate, review);
@@ -271,8 +282,9 @@ function s04Camunda7Executable(): EvalScenario {
         conditionExpression: '${approved == true}',
       });
       await connect(diagramId, decision, reject, { label: 'No', isDefault: true });
-      await connect(diagramId, approve, end);
-      await connect(diagramId, reject, end);
+      await connect(diagramId, approve, merge);
+      await connect(diagramId, reject, merge);
+      await connect(diagramId, merge, end);
 
       await layout(diagramId);
       return { diagramId };

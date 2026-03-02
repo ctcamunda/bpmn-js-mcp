@@ -67,14 +67,17 @@ function computeOverlapAndNearMisses(shapes: ListedElement[]): {
   let overlaps = 0;
   let nearMisses = 0;
 
-  for (let i = 0; i < shapes.length; i++) {
-    const a = shapes[i];
+  // Boundary events naturally overlap their host task — exclude them.
+  const nonBoundary = shapes.filter((s) => s.type !== 'bpmn:BoundaryEvent');
+
+  for (let i = 0; i < nonBoundary.length; i++) {
+    const a = nonBoundary[i];
     if (a.x === undefined || a.y === undefined || a.width === undefined || a.height === undefined) {
       continue;
     }
     const ra = { x: a.x, y: a.y, width: a.width, height: a.height };
-    for (let j = i + 1; j < shapes.length; j++) {
-      const b = shapes[j];
+    for (let j = i + 1; j < nonBoundary.length; j++) {
+      const b = nonBoundary[j];
       if (
         b.x === undefined ||
         b.y === undefined ||
@@ -191,17 +194,44 @@ function computeGridSnapAvg(shapes: ListedElement[]): number {
  * pairs within the same layer have Y positions that differ by more than
  * the alignment threshold (20px).
  *
- * Well-aligned diagrams have elements in the same column at similar Y levels.
+ * Pairs that share a common direct predecessor or successor are skipped —
+ * those are gateway branches and intentionally placed at different Y levels.
  */
-function computeHorizontalMisalignments(shapes: ListedElement[]): number {
+function computeHorizontalMisalignments(
+  shapes: ListedElement[],
+  flows: ListedElement[]
+): number {
   const LAYER_TOLERANCE = 30; // elements within 30px X are in same layer
   const ALIGNMENT_THRESHOLD = 20; // Y deviation threshold for misalignment
+
+  // Build predecessor/successor adjacency from flows
+  const predecessors = new Map<string, Set<string>>();
+  const successors = new Map<string, Set<string>>();
+  for (const f of flows) {
+    if (!f.sourceId || !f.targetId) continue;
+    if (!predecessors.has(f.targetId)) predecessors.set(f.targetId, new Set());
+    predecessors.get(f.targetId)!.add(f.sourceId);
+    if (!successors.has(f.sourceId)) successors.set(f.sourceId, new Set());
+    successors.get(f.sourceId)!.add(f.targetId);
+  }
+
+  // Returns true when two elements are gateway branches (share a direct
+  // common predecessor = both come from same gateway, or common successor
+  // = both feed into the same join gateway)
+  function areGatewayBranches(aId: string, bId: string): boolean {
+    const ap = predecessors.get(aId);
+    const bp = predecessors.get(bId);
+    if (ap && bp) for (const p of ap) if (bp.has(p)) return true;
+    const as_ = successors.get(aId);
+    const bs = successors.get(bId);
+    if (as_ && bs) for (const s of as_) if (bs.has(s)) return true;
+    return false;
+  }
 
   // Group shapes by approximate X position (layer)
   const layers = new Map<number, ListedElement[]>();
   for (const s of shapes) {
     if (s.x === undefined || s.y === undefined) continue;
-    // Find or create layer bucket
     let layerKey = -1;
     for (const key of layers.keys()) {
       if (Math.abs(s.x - key) <= LAYER_TOLERANCE) {
@@ -216,16 +246,15 @@ function computeHorizontalMisalignments(shapes: ListedElement[]): number {
     layers.get(layerKey)!.push(s);
   }
 
-  // Count misaligned pairs within each layer
+  // Count misaligned pairs within each layer, skipping gateway branches
   let misalignments = 0;
   for (const layer of layers.values()) {
     if (layer.length < 2) continue;
     for (let i = 0; i < layer.length; i++) {
       for (let j = i + 1; j < layer.length; j++) {
+        if (areGatewayBranches(layer[i].id, layer[j].id)) continue;
         const yDiff = Math.abs((layer[i].y ?? 0) - (layer[j].y ?? 0));
-        if (yDiff > ALIGNMENT_THRESHOLD) {
-          misalignments++;
-        }
+        if (yDiff > ALIGNMENT_THRESHOLD) misalignments++;
       }
     }
   }
@@ -298,7 +327,7 @@ export function computeLayoutMetrics(
   const { flowSegments, bendCount, diagonalSegments, detourRatioAvg } = buildFlowSegments(flows);
   const crossings = computeCrossings(flowSegments);
   const gridSnapAvg = computeGridSnapAvg(shapes);
-  const horizontalMisalignments = computeHorizontalMisalignments(shapes);
+  const horizontalMisalignments = computeHorizontalMisalignments(shapes, flows);
   const verticalImbalance = computeVerticalImbalance(shapes, flows);
 
   return {
