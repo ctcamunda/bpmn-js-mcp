@@ -6,6 +6,7 @@ import { runEval } from './eval/run-eval';
 import type { EvalConfig, EvalReport } from './eval/types';
 import type { AuditLog, IterationAudit } from './agent-loop-types';
 import { generateMarkdownReport } from './agent-loop-report';
+import { buildPrompt } from './agent-loop-prompt';
 import {
   captureScenarioSvgs,
   copilotRunEdits,
@@ -93,87 +94,7 @@ function summarizeReport(report: EvalReport): string {
   const lines = [
     `Aggregate: avg=${report.aggregate.scoreAvg} min=${report.aggregate.scoreMin}`,
     `Worst: ${worst.scenarioId} ${worst.name} score=${worst.score} grade=${worst.grade}`,
-    `Worst metrics: overlaps=${worst.metrics.overlaps}, crossings=${worst.metrics.crossings}, diagonalSegments=${worst.metrics.diagonalSegments}, bendCount=${worst.metrics.bendCount}, detourRatioAvg=${worst.metrics.detourRatioAvg}, nearMisses=${worst.metrics.nearMisses}, gridSnapAvg=${worst.metrics.gridSnapAvg}`,
   ];
-  // Include alignment and lint metrics if present
-  if (worst.metrics.horizontalMisalignments !== undefined) {
-    lines.push(`Alignment: horizontalMisalignments=${worst.metrics.horizontalMisalignments}, verticalImbalance=${worst.metrics.verticalImbalance}`);
-  }
-  if (worst.metrics.lintErrors !== undefined) {
-    lines.push(`Camunda 7 lint: errors=${worst.metrics.lintErrors}, warnings=${worst.metrics.lintWarnings}`);
-  }
-  return lines.join('\n');
-}
-
-function buildPrompt(report: EvalReport, outputDir: string): string {
-  const worst = [...report.scenarios].sort((a, b) => a.score - b.score)[0];
-  const hasCamunda7Issues =
-    (worst.metrics.lintErrors ?? 0) > 0 || (worst.metrics.lintWarnings ?? 0) > 0;
-  const hasLayoutIssues =
-    worst.metrics.overlaps > 0 ||
-    worst.metrics.crossings > 0 ||
-    worst.metrics.horizontalMisalignments > 0 ||
-    worst.metrics.verticalImbalance > 1;
-
-  const lines = [
-    'You are improving an open-source TypeScript project that lays out BPMN diagrams headlessly.',
-    'Your task: make targeted edits to the TypeScript source files to improve the layout quality score.',
-    '',
-    'GOALS (in priority order):',
-    '  1. Produce Camunda 7 compatible executable BPMN (minimize lint errors/warnings)',
-    '  2. Create balanced, aligned layouts (elements in same layer at same Y)',
-    '  3. Minimize flow/connection overlap and crossings',
-    '  4. Use existing bpmn-js layout (AutoPlace, ManhattanLayout) - no custom algorithms',
-    '',
-    'You have access to BPMN MCP tools (bpmn-js-mcp server). Use them to:',
-    '  1. Import any generated BPMN file with import_bpmn_xml (filePath parameter)',
-    '  2. Run layout_bpmn_diagram to test layout changes',
-    '  3. Export the result with export_bpmn (format: svg) to visually inspect quality',
-    '  4. Then translate your observations into TypeScript fixes in src/rebuild/',
-    '',
-    'Hard constraints:',
-    '- Edit ONLY files under src/ or test/ (not dist/, node_modules/, or generated artifacts).',
-    '- Do not change the scoring weights in src/eval/score.ts.',
-    '- Keep changes minimal and focused on the layout engine in src/rebuild/.',
-    '- Do not add new npm packages.',
-    '- Do NOT build custom layout algorithms - leverage bpmn-js AutoPlace and ManhattanLayout.',
-    '',
-    'Context: current eval report summary:',
-    summarizeReport(report),
-    '',
-    `Focus on improving the worst scenario: ${worst.scenarioId} ${worst.name}.`,
-    `You can find its BPMN artifact in: ${outputDir}`,
-  ];
-
-  // Add specific guidance based on issues detected
-  if (hasCamunda7Issues) {
-    lines.push('');
-    lines.push('⚠ CAMUNDA 7 ISSUES DETECTED:');
-    lines.push(`  - ${worst.metrics.lintErrors} errors, ${worst.metrics.lintWarnings} warnings`);
-    lines.push('  - Check that scenarios in src/eval/scenarios.ts set proper Camunda 7 properties');
-    lines.push('  - Service tasks need camunda:type + camunda:topic or camunda:class');
-    lines.push('  - User tasks should have camunda:assignee or camunda:candidateGroups');
-    lines.push('  - Timer events need timeDuration/timeDate/timeCycle');
-  }
-
-  if (hasLayoutIssues) {
-    lines.push('');
-    lines.push('⚠ LAYOUT ISSUES DETECTED:');
-    if (worst.metrics.horizontalMisalignments > 0) {
-      lines.push(`  - ${worst.metrics.horizontalMisalignments} horizontal misalignments (elements in same column not at same Y)`);
-    }
-    if (worst.metrics.verticalImbalance > 1) {
-      lines.push(`  - Vertical imbalance ${worst.metrics.verticalImbalance.toFixed(2)} (gateway branches not centered)`);
-    }
-    if (worst.metrics.crossings > 0) {
-      lines.push(`  - ${worst.metrics.crossings} connection crossings`);
-    }
-    lines.push('  - Fix areas: src/rebuild/positioning.ts, src/rebuild/engine.ts');
-  }
-
-  lines.push('');
-  lines.push('Typical fix areas: routing waypoints, overlap avoidance, and layout spacing in src/rebuild/.');
-
   return lines.join('\n');
 }
 
@@ -244,7 +165,8 @@ async function evalCandidate(
 
 async function runIteration(
   ctx: IterCtx,
-  baseline: EvalReport
+  baseline: EvalReport,
+  previousAudits?: IterationAudit[]
 ): Promise<{ next: EvalReport; ok: boolean; audit: IterationAudit }> {
   const { iter, iterations, repoDir, journalDir, evalConfig, mcpConfigPath, model } = ctx;
   const label = `iter-${String(iter).padStart(2, '0')}`;
@@ -280,7 +202,7 @@ async function runIteration(
 
   process.stdout.write(`\nIteration ${iter}/${iterations}: asking Copilot to edit files...\n`);
   const diff = copilotRunEdits({
-    prompt: buildPrompt(baseline, evalConfig.outputDir),
+    prompt: buildPrompt(baseline, evalConfig.outputDir, previousAudits),
     repoDir,
     mcpConfigPath,
     transcriptPath,
@@ -347,7 +269,8 @@ async function main() {
     for (let iter = 1; iter <= iterations; iter++) {
       const { next, ok, audit } = await runIteration(
         { iter, iterations, repoDir, journalDir, evalConfig, minImprove, mcpConfigPath, model },
-        baseline
+        baseline,
+        auditIterations  // pass previous iterations for learning
       );
       auditIterations.push(audit);
       baseline = next;
