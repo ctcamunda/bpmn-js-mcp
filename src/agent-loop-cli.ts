@@ -44,7 +44,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { runEval } from './eval/run-eval';
+import { runEval } from './eval/run-eval'; // baseline only — candidate eval uses runEvalSubprocess
 import type { EvalConfig, EvalReport } from './eval/types';
 import type { AuditLog, IterationAudit } from './agent-loop-types';
 import { generateMarkdownReport } from './agent-loop-report';
@@ -140,6 +140,28 @@ function summarizeReport(report: EvalReport): string {
   return lines.join('\n');
 }
 
+/**
+ * Run the eval harness in a **child process** so it picks up the freshly
+ * compiled `dist/eval-cli.js` rather than the stale bundle that was loaded
+ * when this agent-loop process started.
+ *
+ * Background: `agent-loop-cli.js` is a self-contained esbuild bundle.  Once
+ * it starts, `require()` cache is fixed — re-building dist/ on disk has no
+ * effect on the in-process module graph.  Calling `runEval()` directly after
+ * `npm run build` would always execute the *original* layout engine, making
+ * every candidate score identical to baseline (0.000 improvement every iter).
+ *
+ * The subprocess writes `report.json` to `outputDir` and we read it back.
+ */
+function runEvalSubprocess(opts: { repoDir: string; outputDir: string }): EvalReport {
+  const evalCli = path.join(opts.repoDir, 'dist', 'eval-cli.js');
+  run('node', [evalCli, '--outputDir', opts.outputDir, '--exportArtifacts'], {
+    cwd: opts.repoDir,
+  });
+  const reportPath = path.join(opts.outputDir, 'report.json');
+  return JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as EvalReport;
+}
+
 // ---------------------------------------------------------------------------
 // Iteration runner
 // ---------------------------------------------------------------------------
@@ -177,7 +199,9 @@ async function evalCandidate(
     fs.writeFileSync(patchPath, diff + '\n', 'utf-8');
     run('npm', ['run', 'build'], { cwd: repoDir });
     run('npm', ['test'], { cwd: repoDir });
-    const candidate = await runEval(evalConfig);
+    // Run eval in a subprocess so it uses the freshly built dist/eval-cli.js.
+    // In-process runEval() would silently use the stale bundle loaded at startup.
+    const candidate = runEvalSubprocess({ repoDir, outputDir: evalConfig.outputDir });
     fs.writeFileSync(path.join(iterDir, 'report.json'), JSON.stringify(candidate, null, 2) + '\n', 'utf-8'); // prettier-ignore
     iterAudit.candidateReport = candidate;
     iterAudit.svgSnapshots.after = captureScenarioSvgs(candidate.scenarios, path.join(iterDir, 'svgs-after'), 'after'); // prettier-ignore
