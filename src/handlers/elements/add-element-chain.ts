@@ -320,7 +320,12 @@ export async function handleAddElementChain(args: AddElementChainArgs): Promise<
       'Use connect_bpmn_elements ONLY for new branch flows originating FROM the gateway. ' +
       'Mark exactly one outgoing branch as the default with isDefault: true in connect_bpmn_elements, ' +
       'and add conditionExpression to all other branches. ' +
-      'Then run layout_bpmn_diagram after all branches are wired.'
+      'Then run layout_bpmn_diagram after all branches are wired.' +
+      (unconnectedElements.length > 0
+        ? ' Unconnected element IDs: ' +
+          unconnectedElements.map((e) => e.elementId).join(', ') +
+          '.'
+        : '')
     : undefined;
 
   const nextSteps = laneNextStep.length > 0 ? laneNextStep : undefined;

@@ -7,6 +7,7 @@
  */
 
 import { segmentIntersectsRect } from '../geometry';
+import { STANDARD_BPMN_GAP } from '../constants';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -297,15 +298,47 @@ function assignLShapeWaypoints(
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
+ * Route a backward (right-to-left) connection as a clean rectangular U-arch.
+ *
+ * Path: exit source bottom → drop to a row below all elements → traverse
+ * left → enter target bottom.  This produces an orthogonal 4-waypoint path
+ * that avoids the diagonal segments ManhattanLayout often generates for
+ * back-edges.
+ *
+ * The route-Y is placed half a STANDARD_BPMN_GAP below the lower of the
+ * two element bottoms.
+ */
+function resetBackEdgeWaypoints(conn: any): void {
+  const source = conn.source;
+  const target = conn.target;
+
+  const srcCenterX = Math.round(source.x + (source.width || 0) / 2);
+  const srcBottom = source.y + (source.height || 0);
+  const tgtCenterX = Math.round(target.x + (target.width || 0) / 2);
+  const tgtBottom = target.y + (target.height || 0);
+  const routeY = Math.round(Math.max(srcBottom, tgtBottom) + STANDARD_BPMN_GAP / 2);
+
+  conn.waypoints = [
+    { x: srcCenterX, y: srcBottom, original: { x: srcCenterX, y: srcBottom } },
+    { x: srcCenterX, y: routeY },
+    { x: tgtCenterX, y: routeY },
+    { x: tgtCenterX, y: tgtBottom, original: { x: tgtCenterX, y: tgtBottom } },
+  ];
+}
+
+/**
  * Reset a connection's waypoints to edge-to-edge so that ManhattanLayout
  * computes fresh routing based on current element positions rather than
  * being influenced by stale waypoints from intermediate moves.
  *
- * Only applies to left-to-right connections (target is to the right of
- * source).  For gateway sources with vertically offset targets the
- * waypoints are always set to a V→H fan-out path.  For other sources
- * the five detection checks in `detectStaleRouting` decide whether a
- * reset is needed.
+ * Handles both forward (left-to-right) and backward (right-to-left)
+ * connections:
+ * - **Backward flows** (loop-back): routed as a clean rectangular U-arch
+ *   via `resetBackEdgeWaypoints` (exit source bottom → drop below →
+ *   traverse left → enter target bottom).
+ * - **Forward flows**: gateway fan-out uses a V→H path; other flows use
+ *   the five detection checks in `detectStaleRouting` to decide whether
+ *   a reset is needed.
  *
  * When sibling elements share a parent container with the source, checks
  * whether the candidate L-shape path would cross through any of them.
@@ -322,8 +355,16 @@ export function resetStaleWaypoints(conn: any): void {
   const sourceRight = source.x + (source.width || 0);
   const targetLeft = target.x;
 
-  // Only applies to left-to-right connections (target is to the right)
-  if (targetLeft <= sourceRight) return;
+  // Backward flow: target is to the left of (or overlapping) source
+  if (targetLeft <= sourceRight) {
+    // Only handle genuine backward flows (target centre-X left of source centre-X)
+    const srcCenterX = source.x + (source.width || 0) / 2;
+    const tgtCenterX = target.x + (target.width || 0) / 2;
+    if (tgtCenterX < srcCenterX - 10) {
+      resetBackEdgeWaypoints(conn);
+    }
+    return;
+  }
 
   const sourceMidY = source.y + (source.height || 0) / 2;
   const targetMidY = target.y + (target.height || 0) / 2;

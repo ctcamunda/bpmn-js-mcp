@@ -39,7 +39,7 @@ import { extractFlowGraph, type FlowGraph } from './topology';
 import { detectBackEdges, topologicalSort } from './graph';
 import { detectGatewayPatterns } from './patterns';
 import { identifyBoundaryEvents } from './boundary';
-import { resetStaleWaypoints } from './waypoints';
+import { resetStaleWaypoints, straightenNonOrthogonalFlows } from './waypoints';
 import {
   buildContainerHierarchy,
   getContainerRebuildOrder,
@@ -535,6 +535,12 @@ function layoutConnections(
       }
     }
   }
+
+  // Post-pass safety net: straighten any connections that ManhattanLayout
+  // left non-orthogonal (Z-shaped or diagonal).  This catches edge cases
+  // in complex multi-branch graphs where the layout algorithm produces
+  // diagonal segments despite the resetStaleWaypoints pre-processing.
+  count += straightenNonOrthogonalFlows(registry.getAll());
 
   return count;
 }

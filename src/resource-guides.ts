@@ -141,6 +141,13 @@ Business Rule Tasks primarily integrate with DMN decision tables:
 6. **No history time-to-live** — Camunda 7 requires this on the process.
 7. **Duplicate element names** — each flow node should have a unique name
    within its scope for clarity.
+8. **Retry / loop-back flows creating implicit merges** — when a flow loops
+   back to a task that already has an incoming flow (e.g. a retry path
+   rejoining a task), you MUST insert an explicit merge gateway first.
+   Use \`add_bpmn_element\` with \`flowId\` set to the existing incoming
+   flow to insert the gateway in-line, then connect the retry flow to
+   that gateway. Never connect two flows directly into a task — this
+   creates an implicit merge that causes runtime errors.
 `;
 
 /**

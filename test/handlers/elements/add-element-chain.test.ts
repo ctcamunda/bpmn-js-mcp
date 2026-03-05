@@ -380,4 +380,27 @@ describe('add_bpmn_element_chain', () => {
       expect(disconnectWarning).toBeUndefined();
     }
   });
+
+  test('note includes unconnected element IDs when chain has gateway', async () => {
+    const diagramId = await createDiagram();
+
+    const res = parseResult(
+      await handleAddElementChain({
+        diagramId,
+        elements: [
+          { elementType: 'bpmn:StartEvent', name: 'Start' },
+          { elementType: 'bpmn:ExclusiveGateway', name: 'Decision' },
+          { elementType: 'bpmn:UserTask', name: 'Option A' },
+          { elementType: 'bpmn:UserTask', name: 'Option B' },
+        ],
+      })
+    );
+
+    expect(res.success).toBe(true);
+    expect(res.note).toBeDefined();
+    // The note should include the IDs of the unconnected elements
+    for (const uc of res.unconnectedElements) {
+      expect(res.note).toContain(uc.elementId);
+    }
+  });
 });

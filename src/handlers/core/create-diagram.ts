@@ -93,19 +93,30 @@ const WORKFLOW_CONTEXT_GUIDANCE: Record<
   },
 };
 
-/** Append PNG image content to a ToolResult (non-fatal). */
+/** Append PNG (with SVG fallback) and SVG image content to a ToolResult (non-fatal). */
 async function appendPngImage(result: ToolResult, modeler: any): Promise<void> {
   try {
-    const { svgToPng } = await import('../../svg-to-png');
+    const { svgToPngWithFallback } = await import('../../svg-to-png');
     const { svg } = await modeler.saveSVG();
-    const pngBuffer = svgToPng(svg);
-    const base64 = pngBuffer.toString('base64');
+    const { data: pngData, mimeType: pngMime } = svgToPngWithFallback(svg);
+    const base64Png = pngData.toString('base64');
     result.content.push({
       type: 'image',
-      data: base64,
-      mimeType: 'image/png',
+      data: base64Png,
+      mimeType: pngMime,
       annotations: { audience: ['user'] },
     });
+    // Also append SVG to ease visual comparison between renderers
+    // (skip if fallback already produced SVG — avoid duplicate)
+    if (pngMime !== 'image/svg+xml') {
+      const base64Svg = Buffer.from(svg, 'utf-8').toString('base64');
+      result.content.push({
+        type: 'image',
+        data: base64Svg,
+        mimeType: 'image/svg+xml',
+        annotations: { audience: ['user'] },
+      });
+    }
   } catch {
     // Non-fatal — image conversion should never break the primary operation
   }
@@ -262,8 +273,9 @@ export const TOOL_DEFINITION = {
       includeImage: {
         type: 'boolean',
         description:
-          'When true (default), every mutating tool response appends an ImageContent item with the current ' +
-          'diagram rendered as a base64-encoded PNG (mimeType: image/png). ' +
+          'When true (default), every mutating tool response appends two ImageContent items: ' +
+          'a base64-encoded PNG (mimeType: image/png) and a base64-encoded SVG (mimeType: image/svg+xml) ' +
+          'of the current diagram state. ' +
           'Set to false to keep responses small (e.g. in CI pipelines or batch processing). ' +
           'Suitable for visual UIs that display a live diagram preview after each change.',
       },

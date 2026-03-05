@@ -333,19 +333,30 @@ const INCREMENTAL_NOISE_RULES = new Set([
   'no-implicit-end',
 ]);
 
-/** Append PNG image content to a ToolResult (non-fatal). */
+/** Append PNG (with SVG fallback) and SVG image content to a ToolResult (non-fatal). */
 async function appendPngImageContent(result: ToolResult, modeler: any): Promise<void> {
   try {
-    const { svgToPng } = await import('./svg-to-png');
+    const { svgToPngWithFallback } = await import('./svg-to-png');
     const { svg } = await modeler.saveSVG();
-    const pngBuffer = svgToPng(svg);
-    const base64 = pngBuffer.toString('base64');
+    const { data: pngData, mimeType: pngMime } = svgToPngWithFallback(svg);
+    const base64Png = pngData.toString('base64');
     result.content.push({
       type: 'image',
-      data: base64,
-      mimeType: 'image/png',
+      data: base64Png,
+      mimeType: pngMime,
       annotations: { audience: ['user'] },
     });
+    // Also append SVG to ease visual comparison between renderers
+    // (skip if fallback already produced SVG — avoid duplicate)
+    if (pngMime !== 'image/svg+xml') {
+      const base64Svg = Buffer.from(svg, 'utf-8').toString('base64');
+      result.content.push({
+        type: 'image',
+        data: base64Svg,
+        mimeType: 'image/svg+xml',
+        annotations: { audience: ['user'] },
+      });
+    }
   } catch {
     // Non-fatal — image conversion should never break the primary operation
   }

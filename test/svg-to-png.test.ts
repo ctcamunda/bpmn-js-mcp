@@ -10,7 +10,7 @@
  *    (rough proxy for "text was rendered").
  */
 import { describe, test, expect } from 'vitest';
-import { svgToPng } from '../src/svg-to-png';
+import { svgToPng, svgToPngWithFallback } from '../src/svg-to-png';
 
 const BLANK_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
@@ -56,5 +56,24 @@ describe('svgToPng', () => {
     const height = png.readUInt32BE(20);
     expect(width).toBe(200);
     expect(height).toBe(100);
+  });
+});
+
+describe('svgToPngWithFallback', () => {
+  test('returns PNG with image/png mimeType when fonts are available', () => {
+    const result = svgToPngWithFallback(TEXT_SVG);
+    // On this system fonts exist, so should return PNG
+    expect(result.mimeType).toBe('image/png');
+    expect(result.data).toBeInstanceOf(Buffer);
+    expect(result.data.length).toBeGreaterThan(0);
+    // PNG magic bytes
+    expect(result.data[0]).toBe(0x89);
+    expect(result.data[1]).toBe(0x50);
+  });
+
+  test('returns valid buffer for blank SVG', () => {
+    const result = svgToPngWithFallback(BLANK_SVG);
+    expect(result.data).toBeInstanceOf(Buffer);
+    expect(result.data.length).toBeGreaterThan(0);
   });
 });

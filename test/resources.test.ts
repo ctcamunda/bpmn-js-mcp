@@ -131,5 +131,6 @@ describe('readResource', () => {
     expect(result.contents[0].text).toContain('Executable BPMN for Camunda 7');
     expect(result.contents[0].text).toContain('External Task pattern');
     expect(result.contents[0].text).toContain('Link events');
+    expect(result.contents[0].text).toContain('implicit merge');
   });
 });

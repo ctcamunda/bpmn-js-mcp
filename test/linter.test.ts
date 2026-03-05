@@ -208,6 +208,66 @@ describe('linter', () => {
       const augmented = await appendLintFeedback(result, fakeDiagram);
       expect(augmented.content).toHaveLength(1);
     });
+
+    test('appends both PNG and SVG images when includeImage is set', async () => {
+      const diagramId = await createDiagram();
+      const startId = await addElement(diagramId, 'bpmn:StartEvent', { x: 100, y: 100 });
+      const endId = await addElement(diagramId, 'bpmn:EndEvent', { x: 300, y: 100 });
+      await connect(diagramId, startId, endId);
+
+      const diagram = getDiagram(diagramId);
+      diagram!.includeImage = true;
+
+      const result = {
+        content: [{ type: 'text' as const, text: '{"success":true}' }],
+      };
+
+      const augmented = await appendLintFeedback(result, diagram!);
+
+      // Should have both PNG and SVG image items
+      const pngItems = augmented.content.filter(
+        (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+      );
+      const svgItems = augmented.content.filter(
+        (c: any) => c.type === 'image' && c.mimeType === 'image/svg+xml'
+      );
+      expect(pngItems.length).toBe(1);
+      expect(svgItems.length).toBe(1);
+      // Both should have base64-encoded data
+      expect(pngItems[0].data).toBeTruthy();
+      expect(svgItems[0].data).toBeTruthy();
+    });
+
+    test('surfaces bpmn-mcp/implicit-merge as error in implicit feedback', async () => {
+      // Build a diagram where a task has 2 incoming flows without a merge gateway
+      const diagramId = await createDiagram();
+      const startId = await addElement(diagramId, 'bpmn:StartEvent', { x: 100, y: 100 });
+      const task1Id = await addElement(diagramId, 'bpmn:Task', { name: 'A', x: 250, y: 50 });
+      const task2Id = await addElement(diagramId, 'bpmn:Task', { name: 'B', x: 250, y: 200 });
+      const targetId = await addElement(diagramId, 'bpmn:Task', {
+        name: 'Target',
+        x: 450,
+        y: 100,
+      });
+      const endId = await addElement(diagramId, 'bpmn:EndEvent', { x: 600, y: 100 });
+      await connect(diagramId, startId, task1Id);
+      await connect(diagramId, startId, task2Id);
+      await connect(diagramId, task1Id, targetId);
+      await connect(diagramId, task2Id, targetId); // creates implicit merge
+      await connect(diagramId, targetId, endId);
+
+      const diagram = getDiagram(diagramId);
+      const result = {
+        content: [{ type: 'text' as const, text: '{"success":true}' }],
+      };
+
+      const augmented = await appendLintFeedback(result, diagram!);
+      // Should include implicit-merge in the lint feedback
+      const feedbackItem = augmented.content.find(
+        (c: any) => c.type === 'text' && c.text?.includes('implicit-merge')
+      );
+      expect(feedbackItem).toBeDefined();
+    });
   });
 
   describe('exercises multiple bpmnlint rules', () => {
