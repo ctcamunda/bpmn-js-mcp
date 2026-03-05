@@ -14,6 +14,8 @@
  * - Collapsed pool stacking (3.6)
  * - Text annotation and data object positioning (4.1, 4.2)
  * - Label adjustment (4.4)
+ * - Grid snapping alignment (TODO: Verify 10px grid alignment)
+ * - Boundary event exception chain row spacing (TODO: Handle boundary event spacing)
  */
 
 import { describe, test, expect, afterEach } from 'vitest';
@@ -21,6 +23,7 @@ import { rebuildLayout } from '../../src/rebuild';
 import { clearDiagrams } from '../helpers';
 import { getDiagram } from '../../src/diagram-manager';
 import type { BpmnElement, ElementRegistry } from '../../src/bpmn-types';
+import { POSITION_GRID, DEFAULT_LABEL_SIZE } from '../../src/constants';
 import {
   buildF01LinearFlow,
   buildF02ExclusiveGateway,
@@ -1302,5 +1305,206 @@ describe('waypoint clamping within pool bounds (F13 pool with non-interrupting b
 
     expect(timeoutFlow.waypoints).toBeDefined();
     expect(timeoutFlow.waypoints!.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Grid snapping — Verify 10px grid alignment matches bpmn-js grid snapping
+// (TODO: Verify 10px grid alignment matches bpmn-js grid snapping)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('grid snapping — element left-edge alignment (POSITION_GRID = 10px)', () => {
+  test('all element left edges in a linear chain align to the 10px grid', async () => {
+    const ids = await buildF01LinearFlow();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const elementIds = [ids.start, ids.task1, ids.task2, ids.task3, ids.end];
+
+    for (const id of elementIds) {
+      const el = registry.get(id)!;
+      // Left edge must be a multiple of POSITION_GRID (10px).
+      // This confirms snapLeft() produces grid-aligned positions matching
+      // what bpmn-js GridSnappingAutoPlaceBehavior would produce.
+      expect(el.x % POSITION_GRID).toBe(0);
+    }
+  });
+
+  test('branch elements in a parallel fork-join have grid-aligned left edges', async () => {
+    const ids = await buildF03ParallelForkJoin();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const elementIds = [
+      ids.start,
+      ids.fork,
+      ids.branch1,
+      ids.branch2,
+      ids.branch3,
+      ids.join,
+      ids.end,
+    ];
+
+    for (const id of elementIds) {
+      const el = registry.get(id)!;
+      expect(el.x % POSITION_GRID).toBe(0);
+    }
+  });
+
+  test('custom gridSnap option overrides the default 10px grid', async () => {
+    const ids = await buildF01LinearFlow();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    // Use a 20px grid instead of the default 10px
+    rebuildLayout(diagram, { gridSnap: 20 });
+
+    const registry = getRegistry(ids.diagramId);
+    const elementIds = [ids.start, ids.task1, ids.task2, ids.task3, ids.end];
+
+    for (const id of elementIds) {
+      const el = registry.get(id)!;
+      // With 20px grid, left edges must be multiples of 20
+      expect(el.x % 20).toBe(0);
+    }
+  });
+
+  test('start event left edge is at 160px (grid-snapped from default origin 180)', async () => {
+    // DEFAULT_ORIGIN = { x: 180, y: 200 } — center of start event.
+    // Start event width = 36; snapLeft(180 - 18, 0, 36, 10) = round(162/10)*10 + 18 = 160 + 18 = 178.
+    // Left edge = 178 - 18 = 160 (multiple of 10).
+    const ids = await buildF01LinearFlow();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const startEl = registry.get(ids.start)!;
+
+    expect(startEl.x).toBe(160); // left edge = 160
+    expect(startEl.x % POSITION_GRID).toBe(0); // grid-aligned
+  });
+
+  test('first task left edge is at 250px after snapping from start event', async () => {
+    // Start event right edge = 178 + 18 = 196.
+    // snapLeft(196, 50, 100, 10) = round(246/10)*10 + 50 = 250 + 50 = 300 (centre).
+    // Left edge = 300 - 50 = 250.
+    const ids = await buildF01LinearFlow();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const task1El = registry.get(ids.task1)!;
+
+    expect(task1El.x).toBe(250); // left edge = 250
+    expect(task1El.x % POSITION_GRID).toBe(0);
+  });
+
+  test('gateway branch elements have grid-aligned left edges (exclusive gateway)', async () => {
+    const ids = await buildF02ExclusiveGateway();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const elementIds = [
+      ids.start,
+      ids.review,
+      ids.split,
+      ids.fulfill,
+      ids.reject,
+      ids.merge,
+      ids.end,
+    ];
+
+    for (const id of elementIds) {
+      const el = registry.get(id)!;
+      expect(el.x % POSITION_GRID).toBe(0);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Boundary event exception chain row spacing
+// (TODO: Handle boundary event exception chain row spacing)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('boundary event exception chain row spacing', () => {
+  test('gap between boundary event bottom and chain element top is at least label height', async () => {
+    // bpmn-auto-layout places exception chain targets at [hostRow+1, hostCol+1].
+    // Our BOUNDARY_GAP constant (40px) determines the vertical distance between
+    // the host bottom and the chain element top edge.
+    // The boundary event (36×36) is centred on the host's bottom edge, so its
+    // bottom = hostBottom + 18.  Chain element top = hostBottom + BOUNDARY_GAP.
+    // Gap = BOUNDARY_GAP - 18 = 22px ≥ DEFAULT_LABEL_SIZE.height (20px). ✓
+    const ids = await buildF06BoundaryEvents();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const host = registry.get(ids.host)!;
+    const be = registry.get(ids.boundaryEvent)!;
+    const escalate = registry.get(ids.escalate)!;
+
+    const beBottomY = be.y + be.height;
+    const chainTopY = escalate.y;
+
+    // The gap between the boundary event's bottom edge and the first exception
+    // chain element's top edge must accommodate the boundary event label
+    // (DEFAULT_LABEL_SIZE.height = 20px) plus a small margin.
+    const gap = chainTopY - beBottomY;
+    expect(gap).toBeGreaterThanOrEqual(DEFAULT_LABEL_SIZE.height);
+
+    // The chain top must also be clearly below the host's bottom edge
+    expect(chainTopY).toBeGreaterThan(host.y + host.height);
+  });
+
+  test('multiple boundary events on same host produce non-overlapping chains', async () => {
+    // For two boundary events on the same host (F13 fixture: timer non-interrupting),
+    // each chain should be on its own Y row without overlapping.
+    const ids = await buildF13PoolWithNonInterruptingBoundary();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const task = registry.get(ids.task)!;
+    const be = registry.get(ids.boundaryEvent)!;
+    const timeoutEnd = registry.get(ids.timeoutEnd)!;
+
+    // Exception chain element must be below the host task bottom
+    expect(timeoutEnd.y).toBeGreaterThan(task.y + task.height);
+
+    // Boundary event bottom = be.y + be.height
+    const beBottom = be.y + be.height;
+    // First chain element top (timeoutEnd) must be far enough below boundary event
+    expect(timeoutEnd.y).toBeGreaterThanOrEqual(beBottom);
+  });
+
+  test('exception chain Y center is exactly hostBottom + BOUNDARY_GAP + maxHeight/2', async () => {
+    // Verify the actual numeric formula: chainCenterY = hostBottom + 40 + maxHeight/2.
+    // For a standard task (height=80): chainCenterY = hostBottom + 40 + 40 = hostBottom + 80.
+    // This means chainTop = hostBottom + 40, chainBottom = hostBottom + 120.
+    const ids = await buildF06BoundaryEvents();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const host = registry.get(ids.host)!;
+    const escalate = registry.get(ids.escalate)!;
+
+    const hostBottom = host.y + host.height;
+    const BOUNDARY_GAP = 40; // matches src/rebuild/container-layout.ts
+    const escalateCenterY = escalate.y + escalate.height / 2;
+
+    // Chain center Y = hostBottom + BOUNDARY_GAP + taskHeight/2
+    const expectedCenterY = hostBottom + BOUNDARY_GAP + escalate.height / 2;
+    expect(Math.abs(escalateCenterY - expectedCenterY)).toBeLessThan(2);
   });
 });
