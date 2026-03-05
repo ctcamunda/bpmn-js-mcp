@@ -5,19 +5,13 @@ import { describe, test, expect } from 'vitest';
 import { listPrompts, getPrompt } from '../src/prompts';
 
 describe('listPrompts', () => {
-  test('returns all prompt definitions', () => {
+  test('returns the three style-toggle prompts', () => {
     const prompts = listPrompts();
-    expect(prompts.length).toBeGreaterThanOrEqual(9);
+    expect(prompts.length).toBeGreaterThanOrEqual(3);
     const names = prompts.map((p) => p.name);
-    expect(names).toContain('create-executable-process');
-    expect(names).toContain('convert-to-collaboration');
-    expect(names).toContain('add-sla-timer-pattern');
-    expect(names).toContain('add-approval-pattern');
-    expect(names).toContain('add-error-handling-pattern');
-    expect(names).toContain('add-parallel-tasks-pattern');
-    expect(names).toContain('create-lane-based-process');
-    expect(names).toContain('add-subprocess-pattern');
-    expect(names).toContain('add-message-exchange-pattern');
+    expect(names).toContain('executable');
+    expect(names).toContain('executable-pool');
+    expect(names).toContain('collaboration');
   });
 
   test('each prompt has name, title, and description', () => {
@@ -30,112 +24,42 @@ describe('listPrompts', () => {
 });
 
 describe('getPrompt', () => {
-  test('returns messages for create-executable-process', () => {
-    const result = getPrompt('create-executable-process', { processName: 'Order Processing' });
+  test('executable prompt instructs on flat process modeling', () => {
+    const result = getPrompt('executable');
     expect(result.description).toBeTruthy();
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].role).toBe('user');
-    expect(result.messages[0].content.text).toContain('Order Processing');
     expect(result.messages[0].content.text).toContain('create_bpmn_diagram');
+    expect(result.messages[0].content.text).toContain('export_bpmn');
+    expect(result.messages[0].content.text).toContain('executable');
+    // Flat process prompt should not instruct to call create_bpmn_participant
+    expect(result.messages[0].content.text).not.toContain('create_bpmn_participant');
   });
 
-  test('returns messages for convert-to-collaboration', () => {
-    const result = getPrompt('convert-to-collaboration', {
-      diagramId: 'test-123',
-      partners: 'Customer, Payment Gateway',
-    });
-    expect(result.messages[0].content.text).toContain('test-123');
-    expect(result.messages[0].content.text).toContain('Customer, Payment Gateway');
+  test('executable-pool prompt instructs on pool-based process modeling', () => {
+    const result = getPrompt('executable-pool');
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].content.text).toContain('create_bpmn_participant');
+    expect(result.messages[0].content.text).toContain('export_bpmn');
+    expect(result.messages[0].content.text).toContain('lanes');
   });
 
-  test('returns messages for add-sla-timer-pattern', () => {
-    const result = getPrompt('add-sla-timer-pattern', {
-      diagramId: 'd1',
-      targetElementId: 'Task_1',
-      duration: 'PT2H',
-    });
-    expect(result.messages[0].content.text).toContain('PT2H');
-    expect(result.messages[0].content.text).toContain('Task_1');
-  });
-
-  test('returns messages for add-approval-pattern', () => {
-    const result = getPrompt('add-approval-pattern', {
-      diagramId: 'd1',
-      afterElementId: 'Task_1',
-      approverGroup: 'managers',
-    });
-    expect(result.messages[0].content.text).toContain('managers');
-    expect(result.messages[0].content.text).toContain('Task_1');
+  test('collaboration prompt instructs on multi-pool documentation diagrams', () => {
+    const result = getPrompt('collaboration');
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].content.text).toContain('message flows');
+    expect(result.messages[0].content.text).toContain('export_bpmn');
+    expect(result.messages[0].content.text).toContain('documentation');
   });
 
   test('throws on unknown prompt', () => {
     expect(() => getPrompt('nonexistent')).toThrow('Unknown prompt');
   });
 
-  test('returns messages for add-error-handling-pattern', () => {
-    const result = getPrompt('add-error-handling-pattern', {
-      diagramId: 'd1',
-      targetElementId: 'ServiceTask_1',
-      errorCode: 'PAYMENT_FAILED',
-    });
-    expect(result.messages[0].content.text).toContain('PAYMENT_FAILED');
-    expect(result.messages[0].content.text).toContain('ServiceTask_1');
-    expect(result.messages[0].content.text).toContain('BoundaryEvent');
-    expect(result.messages[0].content.text).toContain('ErrorEventDefinition');
-  });
-
-  test('returns messages for add-parallel-tasks-pattern', () => {
-    const result = getPrompt('add-parallel-tasks-pattern', {
-      diagramId: 'd1',
-      afterElementId: 'Task_1',
-      branches: 'Check Stock, Process Payment, Send Email',
-    });
-    expect(result.messages[0].content.text).toContain('Check Stock');
-    expect(result.messages[0].content.text).toContain('Process Payment');
-    expect(result.messages[0].content.text).toContain('Send Email');
-    expect(result.messages[0].content.text).toContain('ParallelGateway');
-  });
-
-  test('returns messages for create-lane-based-process', () => {
-    const result = getPrompt('create-lane-based-process', {
-      processName: 'Helpdesk Workflow',
-      roles: 'Customer Service, Technical Support, Management',
-    });
-    expect(result.messages[0].content.text).toContain('Helpdesk Workflow');
-    expect(result.messages[0].content.text).toContain('Customer Service');
-    expect(result.messages[0].content.text).toContain('Technical Support');
-    expect(result.messages[0].content.text).toContain('lanes');
-    // TODO #9: updated prompt uses create_bpmn_participant with lanes parameter
-    expect(result.messages[0].content.text).toContain('create_bpmn_participant');
-    expect(result.messages[0].content.text).toContain('laneId');
-  });
-
-  test('uses defaults for missing arguments', () => {
-    const result = getPrompt('create-executable-process', {});
-    expect(result.messages[0].content.text).toContain('My Process');
-  });
-
-  test('returns messages for add-subprocess-pattern', () => {
-    const result = getPrompt('add-subprocess-pattern', {
-      diagramId: 'd1',
-      afterElementId: 'Task_1',
-      subprocessName: 'Process Payment',
-      steps: 'Validate Card, Charge Amount, Send Receipt',
-    });
-    expect(result.messages[0].content.text).toContain('Process Payment');
-    expect(result.messages[0].content.text).toContain('Validate Card');
-    expect(result.messages[0].content.text).toContain('SubProcess');
-    expect(result.messages[0].content.text).toContain('isExpanded');
-  });
-
-  test('returns messages for add-message-exchange-pattern', () => {
-    const result = getPrompt('add-message-exchange-pattern', {
-      processName: 'Order System',
-      partnerName: 'Payment Gateway',
-    });
-    expect(result.messages[0].content.text).toContain('Order System');
-    expect(result.messages[0].content.text).toContain('Payment Gateway');
-    expect(result.messages[0].content.text).toContain('collapsed');
-    expect(result.messages[0].content.text).toContain('message flows');
+  test('prompts have no required arguments', () => {
+    for (const prompt of listPrompts()) {
+      const result = getPrompt(prompt.name);
+      expect(result.messages).toHaveLength(1);
+    }
   });
 });

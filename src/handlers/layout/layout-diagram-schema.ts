@@ -52,6 +52,18 @@ export const TOOL_DEFINITION = {
           'to inline expanded subprocesses so the layout engine can arrange their ' +
           'children on the main plane. Default: false (preserve existing collapsed/expanded state).',
       },
+      autosizeOnly: {
+        type: 'boolean',
+        description:
+          'When true, only resize pools and lanes to fit their contents without running full layout. ' +
+          'Equivalent to the former autosize_bpmn_pools_and_lanes tool. ' +
+          'Accepts participantId to scope resizing to a single pool. Default: false.',
+      },
+      participantId: {
+        type: 'string',
+        description:
+          'Optional. When autosizeOnly is true, scope pool resizing to this participant ID.',
+      },
     },
     required: ['diagramId'],
   },

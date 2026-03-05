@@ -14,7 +14,7 @@ describe('tool-definitions', () => {
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
 
   test('exports the expected number of tools', () => {
-    expect(TOOL_DEFINITIONS.length).toBe(36);
+    expect(TOOL_DEFINITIONS.length).toBe(31);
   });
 
   test.each([
@@ -45,18 +45,18 @@ describe('tool-definitions', () => {
     'create_bpmn_lanes',
     'create_bpmn_participant',
     'analyze_bpmn_lanes',
-    'redistribute_bpmn_elements_across_lanes',
-    'replace_bpmn_element',
+    // redistribute_bpmn_elements_across_lanes removed — use analyze_bpmn_lanes with mode: redistribute
+    // replace_bpmn_element removed — use set_bpmn_element_properties with elementType
     'list_bpmn_process_variables',
     // clone_bpmn_diagram removed — use create_bpmn_diagram with cloneFrom
-    'diff_bpmn_diagrams',
+    // diff_bpmn_diagrams removed — use list_bpmn_diagrams with compareWith
     'add_bpmn_element_chain',
-    'set_bpmn_connection_waypoints',
+    // set_bpmn_connection_waypoints removed — use connect_bpmn_elements with connectionId + waypoints
     'assign_bpmn_elements_to_lane',
     // wrap_bpmn_process_in_collaboration removed — use create_bpmn_participant with wrapExisting
     'handoff_bpmn_to_lane',
     // convert_bpmn_collaboration_to_lanes removed — use create_bpmn_lanes with mergeFrom
-    'autosize_bpmn_pools_and_lanes',
+    // autosize_bpmn_pools_and_lanes removed — use layout_bpmn_diagram with autosizeOnly
   ])("includes tool '%s'", (name) => {
     expect(toolNames).toContain(name);
   });
@@ -77,6 +77,37 @@ describe('tool-definitions', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'create_bpmn_lanes');
     const schema = getSchema(tool);
     expect(schema.properties).toHaveProperty('mergeFrom');
+  });
+
+  test('list_bpmn_diagrams has compareWith parameter (merged from diff_bpmn_diagrams)', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'list_bpmn_diagrams');
+    const schema = getSchema(tool);
+    expect(schema.properties).toHaveProperty('compareWith');
+  });
+
+  test('layout_bpmn_diagram has autosizeOnly parameter (merged from autosize_bpmn_pools_and_lanes)', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'layout_bpmn_diagram');
+    const schema = getSchema(tool);
+    expect(schema.properties).toHaveProperty('autosizeOnly');
+  });
+
+  test('analyze_bpmn_lanes has redistribute mode (merged from redistribute_bpmn_elements_across_lanes)', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'analyze_bpmn_lanes');
+    const schema = getSchema(tool);
+    expect(schema.properties!.mode.enum).toContain('redistribute');
+  });
+
+  test('set_bpmn_element_properties has elementType parameter (merged from replace_bpmn_element)', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'set_bpmn_element_properties');
+    const schema = getSchema(tool);
+    expect(schema.properties).toHaveProperty('elementType');
+  });
+
+  test('connect_bpmn_elements has connectionId and waypoints parameters (merged from set_bpmn_connection_waypoints)', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'connect_bpmn_elements');
+    const schema = getSchema(tool);
+    expect(schema.properties).toHaveProperty('connectionId');
+    expect(schema.properties).toHaveProperty('waypoints');
   });
 
   test("every tool has an inputSchema with type 'object'", () => {

@@ -37,7 +37,7 @@ import {
   handleRedoChange,
   TOOL_DEFINITION as BPMN_HISTORY_DEF,
 } from './core/bpmn-history';
-import { handleDiffDiagrams, TOOL_DEFINITION as DIFF_DIAGRAMS_DEF } from './core/diff-diagrams';
+import { handleDiffDiagrams } from './core/diff-diagrams';
 import {
   handleListProcessVariables,
   TOOL_DEFINITION as LIST_PROCESS_VARIABLES_DEF,
@@ -63,10 +63,7 @@ import {
 } from './elements/move-element';
 import { handleDuplicateElement } from './elements/duplicate-element';
 import { handleInsertElement } from './elements/insert-element';
-import {
-  handleReplaceElement,
-  TOOL_DEFINITION as REPLACE_ELEMENT_DEF,
-} from './elements/replace-element';
+import { handleReplaceElement } from './elements/replace-element';
 import {
   handleAddElementChain,
   TOOL_DEFINITION as ADD_ELEMENT_CHAIN_DEF,
@@ -76,10 +73,7 @@ import {
   handleGetProperties,
   TOOL_DEFINITION as GET_PROPERTIES_DEF,
 } from './elements/get-properties';
-import {
-  handleSetConnectionWaypoints,
-  TOOL_DEFINITION as SET_CONNECTION_WAYPOINTS_DEF,
-} from './elements/set-connection-waypoints';
+import { handleSetConnectionWaypoints } from './elements/set-connection-waypoints';
 
 // ── Properties: property setters ───────────────────────────────────────────
 
@@ -158,14 +152,8 @@ import {
   TOOL_DEFINITION as ANALYZE_LANES_DEF,
 } from './collaboration/analyze-lanes';
 import { handleConvertCollaborationToLanes } from './collaboration/convert-collaboration-to-lanes';
-import {
-  handleRedistributeElementsAcrossLanes,
-  TOOL_DEFINITION as REDISTRIBUTE_ELEMENTS_ACROSS_LANES_DEF,
-} from './collaboration/redistribute-elements-across-lanes';
-import {
-  handleAutosizePoolsAndLanes,
-  TOOL_DEFINITION as AUTOSIZE_POOLS_AND_LANES_DEF,
-} from './collaboration/autosize-pools-and-lanes';
+import { handleRedistributeElementsAcrossLanes } from './collaboration/redistribute-elements-across-lanes';
+import { handleAutosizePoolsAndLanes } from './collaboration/autosize-pools-and-lanes';
 
 // ── Unified tool registry ──────────────────────────────────────────────────
 //
@@ -205,21 +193,18 @@ const TOOL_REGISTRY: ToolRegistration[] = [
   { definition: CREATE_LANES_DEF, handler: handleCreateLanes },
   { definition: CREATE_PARTICIPANT_DEF, handler: handleCreateParticipant },
   { definition: ANALYZE_LANES_DEF, handler: handleAnalyzeLanes },
-  {
-    definition: REDISTRIBUTE_ELEMENTS_ACROSS_LANES_DEF,
-    handler: handleRedistributeElementsAcrossLanes,
-  },
-  { definition: REPLACE_ELEMENT_DEF, handler: handleReplaceElement },
+  // redistribute_bpmn_elements_across_lanes removed: redistribute mode on analyze_bpmn_lanes
+  // replace_bpmn_element removed: elementType parameter on set_bpmn_element_properties
   { definition: LIST_PROCESS_VARIABLES_DEF, handler: handleListProcessVariables },
   // clone_bpmn_diagram removed: cloneFrom parameter on create_bpmn_diagram
-  { definition: DIFF_DIAGRAMS_DEF, handler: handleDiffDiagrams },
+  // diff_bpmn_diagrams removed: compareWith parameter on list_bpmn_diagrams
   { definition: ADD_ELEMENT_CHAIN_DEF, handler: handleAddElementChain },
-  { definition: SET_CONNECTION_WAYPOINTS_DEF, handler: handleSetConnectionWaypoints },
+  // set_bpmn_connection_waypoints removed: waypoints+connectionId parameters on connect_bpmn_elements
   { definition: ASSIGN_ELEMENTS_TO_LANE_DEF, handler: handleAssignElementsToLane },
   // wrap_bpmn_process_in_collaboration removed: wrapExisting on create_bpmn_participant
   { definition: HANDOFF_TO_LANE_DEF, handler: handleHandoffToLane },
   // convert_bpmn_collaboration_to_lanes removed: mergeFrom on create_bpmn_lanes
-  { definition: AUTOSIZE_POOLS_AND_LANES_DEF, handler: handleAutosizePoolsAndLanes },
+  // autosize_bpmn_pools_and_lanes removed: autosizeOnly on layout_bpmn_diagram
 ];
 
 // ── Auto-derived exports ───────────────────────────────────────────────────

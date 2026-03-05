@@ -69,6 +69,14 @@ export interface LayoutDiagramArgs {
    * Useful for fixing label overlaps without changing element positions.
    */
   labelsOnly?: boolean;
+  /**
+   * When true, only resize pools and lanes to fit their contents without running full layout.
+   * Equivalent to the former autosize_bpmn_pools_and_lanes tool.
+   * Accepts participantId to scope resizing to a single pool.
+   */
+  autosizeOnly?: boolean;
+  /** When autosizeOnly is true, scope pool resizing to this participant ID. */
+  participantId?: string;
 }
 
 /** Handle labels-only mode: just adjust labels without full layout. */
@@ -345,6 +353,14 @@ export async function handleLayoutDiagram(
   args: LayoutDiagramArgs,
   context?: ToolContext
 ): Promise<ToolResult> {
+  if (args.autosizeOnly) {
+    // Delegate to autosize handler, passing optional participantId
+    const autosizeArgs: any = { diagramId: args.diagramId };
+    if (args.participantId) autosizeArgs.participantId = args.participantId;
+    const result = await handleAutosizePoolsAndLanes(autosizeArgs);
+    const data = JSON.parse(result.content[0].text as string);
+    return jsonResult({ ...data, autosizeOnly: true });
+  }
   if (args.labelsOnly) return handleLabelsOnlyMode(args.diagramId);
   if (args.dryRun) return handleDryRunLayout(args);
 

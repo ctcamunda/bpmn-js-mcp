@@ -125,6 +125,8 @@ export default tseslint.config(
       'src/handlers/collaboration/convert-collaboration-to-lanes.ts',
       'src/handlers/collaboration/redistribute-elements-across-lanes.ts',
       'src/handlers/collaboration/create-lanes.ts',
+      'src/handlers/elements/connect.ts',
+      'src/handlers/properties/set-properties.ts',
       'src/handlers/helpers.ts',
       'src/prompt-definitions.ts',
       'src/rebuild/container-layout.ts',

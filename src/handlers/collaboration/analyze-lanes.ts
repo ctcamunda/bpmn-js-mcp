@@ -12,11 +12,20 @@ import { type ToolResult } from '../../types';
 import { requireDiagram, jsonResult, validateArgs } from '../helpers';
 import { getService } from '../../bpmn-types';
 import { findProcess } from './collaboration-utils';
+import { handleRedistributeElementsAcrossLanes } from './redistribute-elements-across-lanes';
 
 export interface AnalyzeLanesArgs {
   diagramId: string;
-  mode: 'suggest' | 'validate' | 'pool-vs-lanes';
+  mode: 'suggest' | 'validate' | 'pool-vs-lanes' | 'redistribute';
   participantId?: string;
+  /** For redistribute mode: redistribution strategy. */
+  strategy?: string;
+  /** For redistribute mode: dry run without applying changes. */
+  dryRun?: boolean;
+  /** For redistribute mode: validate before/after. */
+  validate?: boolean;
+  /** For redistribute mode: whether to reposition elements. */
+  reposition?: boolean;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1205,6 +1214,15 @@ export async function handleAnalyzeLanes(args: AnalyzeLanesArgs): Promise<ToolRe
       return handleSuggestPoolVsLanes({
         diagramId: args.diagramId,
       });
+    case 'redistribute':
+      return handleRedistributeElementsAcrossLanes({
+        diagramId: args.diagramId,
+        participantId: args.participantId,
+        strategy: args.strategy as any,
+        dryRun: args.dryRun,
+        validate: args.validate,
+        reposition: args.reposition,
+      });
     default:
       return handleSuggestLaneOrganization({
         diagramId: args.diagramId,
@@ -1222,7 +1240,9 @@ export const TOOL_DEFINITION = {
     "'validate' — check if current lane assignment makes semantic sense by analyzing cross-lane flow frequency, " +
     'zigzag patterns, single-element lanes, and overall coherence. Returns structured issues with fix suggestions. ' +
     "'pool-vs-lanes' — evaluate whether a collaboration should use separate pools (different organizations/systems) " +
-    'or lanes (role separation within one organization). Returns recommendation with confidence and reasoning.',
+    'or lanes (role separation within one organization). Returns recommendation with confidence and reasoning. ' +
+    "'redistribute' — rebalance element placement across existing lanes. Equivalent to the former redistribute_bpmn_elements_across_lanes tool. " +
+    'Supports strategy (role-based, balance, minimize-crossings, manual), dryRun, validate, and reposition options.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -1232,16 +1252,41 @@ export const TOOL_DEFINITION = {
       },
       mode: {
         type: 'string',
-        enum: ['suggest', 'validate', 'pool-vs-lanes'],
+        enum: ['suggest', 'validate', 'pool-vs-lanes', 'redistribute'],
         description:
           "Analysis mode: 'suggest' for lane assignment recommendations, " +
           "'validate' for checking current lane organization quality, " +
-          "'pool-vs-lanes' for deciding between pools and lanes.",
+          "'pool-vs-lanes' for deciding between pools and lanes, " +
+          "'redistribute' for rebalancing element placement across existing lanes.",
       },
       participantId: {
         type: 'string',
         description:
-          "Optional participant ID to scope the analysis (used with 'suggest' and 'validate' modes).",
+          "Optional participant ID to scope the analysis (used with 'suggest', 'validate', and 'redistribute' modes).",
+      },
+      strategy: {
+        type: 'string',
+        enum: ['role-based', 'balance', 'minimize-crossings', 'manual'],
+        description:
+          "Redistribution strategy (mode: 'redistribute' only). " +
+          "'role-based' matches assignee/candidateGroups to lane names. " +
+          "'balance' spreads elements evenly. 'minimize-crossings' minimizes cross-lane flows. " +
+          "'manual' assigns specified elementIds to a target laneId.",
+      },
+      dryRun: {
+        type: 'boolean',
+        description:
+          "When true (mode: 'redistribute' only), returns the redistribution plan without applying changes.",
+      },
+      validate: {
+        type: 'boolean',
+        description:
+          "When true (mode: 'redistribute' only), runs lane validation before and after redistribution.",
+      },
+      reposition: {
+        type: 'boolean',
+        description:
+          "When true (mode: 'redistribute' only, default true), repositions elements vertically within their new lane bounds.",
       },
     },
     required: ['diagramId', 'mode'],

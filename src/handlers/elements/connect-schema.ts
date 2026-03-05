@@ -12,7 +12,8 @@ const BPMN_ASSOCIATION_TYPE = 'bpmn:Association';
 export const TOOL_DEFINITION = {
   name: 'connect_bpmn_elements',
   description:
-    "Connect BPMN elements. Supports pair mode (sourceElementId + targetElementId) or chain mode (elementIds array for sequential connections). Auto-detects connection type: SequenceFlow for normal flow, MessageFlow for cross-pool, Association for text annotations, and DataAssociation for data objects/stores. Supports optional condition expressions for gateway branches and isDefault flag for gateway default flows. To modify an existing connection's label or condition after creation, use set_bpmn_element_properties with the connection's ID.",
+    "Connect BPMN elements. Supports pair mode (sourceElementId + targetElementId) or chain mode (elementIds array for sequential connections). Auto-detects connection type: SequenceFlow for normal flow, MessageFlow for cross-pool, Association for text annotations, and DataAssociation for data objects/stores. Supports optional condition expressions for gateway branches and isDefault flag for gateway default flows. To modify an existing connection's label or condition after creation, use set_bpmn_element_properties with the connection's ID. " +
+    'Also supports waypoint mode: provide connectionId + waypoints to set custom routing on an existing connection — equivalent to the former set_bpmn_connection_waypoints tool.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -62,6 +63,28 @@ export const TOOL_DEFINITION = {
           'When true, run layout_bpmn_diagram automatically after connecting. ' +
           'Useful after the last connection in a sequence. Default: false.',
       },
+      connectionId: {
+        type: 'string',
+        description:
+          'ID of an existing connection to update waypoints on (waypoint mode). ' +
+          'Must be provided together with waypoints. ' +
+          'Equivalent to the former set_bpmn_connection_waypoints tool.',
+      },
+      waypoints: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            x: { type: 'number', description: 'X coordinate' },
+            y: { type: 'number', description: 'Y coordinate' },
+          },
+          required: ['x', 'y'],
+        },
+        minItems: 2,
+        description:
+          'Ordered array of waypoints defining the connection path (waypoint mode). ' +
+          'Must have at least 2 points (start and end). Use with connectionId.',
+      },
     },
     required: ['diagramId'],
     oneOf: [
@@ -72,6 +95,10 @@ export const TOOL_DEFINITION = {
       {
         description: 'Chain mode: connect a sequence of elements',
         required: ['elementIds'],
+      },
+      {
+        description: 'Waypoint mode: set custom waypoints on an existing connection',
+        required: ['connectionId', 'waypoints'],
       },
     ],
     examples: [

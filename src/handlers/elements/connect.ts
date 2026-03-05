@@ -29,6 +29,7 @@ import {
 } from '../helpers';
 import { appendLintFeedback } from '../../linter';
 import { handleLayoutDiagram } from '../layout/layout-diagram';
+import { handleSetConnectionWaypoints } from './set-connection-waypoints';
 import { checkParallelGatewayBalance } from './connect-gateway-utils';
 
 /** BPMN connection type constants. */
@@ -49,6 +50,18 @@ export interface ConnectArgs {
   isDefault?: boolean;
   /** When true, run layout_bpmn_diagram automatically after connecting. Default: false. */
   autoLayout?: boolean;
+  /**
+   * ID of an existing connection to update waypoints on.
+   * When provided together with waypoints, sets custom waypoints on the existing connection.
+   * Equivalent to the former set_bpmn_connection_waypoints tool.
+   */
+  connectionId?: string;
+  /**
+   * Custom waypoints for a connection. Use with connectionId to update an existing connection,
+   * or alongside sourceElementId/targetElementId to set waypoints immediately after creating.
+   * Must have at least 2 points.
+   */
+  waypoints?: Array<{ x: number; y: number }>;
 }
 
 /** Types that must be connected via bpmn:Association, not SequenceFlow. */
@@ -248,6 +261,29 @@ function connectPair(
 
 export async function handleConnect(args: ConnectArgs): Promise<ToolResult> {
   const { diagramId, elementIds } = args;
+
+  // Waypoint update mode: connectionId + waypoints → delegate to set-connection-waypoints
+  if (args.connectionId !== undefined || args.waypoints !== undefined) {
+    // Validate that both are present
+    if (args.connectionId === undefined) {
+      return jsonResult({
+        success: false,
+        error: 'connectionId is required when waypoints are provided.',
+      });
+    }
+    if (args.waypoints === undefined) {
+      return jsonResult({
+        success: false,
+        error: 'waypoints are required when connectionId is provided.',
+      });
+    }
+    return handleSetConnectionWaypoints({
+      diagramId,
+      connectionId: args.connectionId,
+      waypoints: args.waypoints,
+    });
+  }
+
   if (elementIds && Array.isArray(elementIds)) {
     if (elementIds.length < 2) {
       throw illegalCombinationError(

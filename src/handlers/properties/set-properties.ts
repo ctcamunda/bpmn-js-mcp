@@ -24,11 +24,18 @@ import {
 } from '../helpers';
 import { appendLintFeedback } from '../../linter';
 import { handleScriptProperties } from './set-script-properties';
+import { handleReplaceElement } from '../elements/replace-element';
 
 export interface SetPropertiesArgs {
   diagramId: string;
   elementId: string;
   properties: Record<string, any>;
+  /**
+   * Optional element type replacement. When provided, replaces the element type
+   * (e.g. bpmn:Task → bpmn:UserTask) before setting properties.
+   * Equivalent to the former replace_bpmn_element tool.
+   */
+  elementType?: string;
 }
 
 // ── Sub-functions for special-case property handling ───────────────────────
@@ -285,6 +292,28 @@ function handleProperties(element: any, camundaProps: Record<string, any>, diagr
 export async function handleSetProperties(args: SetPropertiesArgs): Promise<ToolResult> {
   validateArgs(args, ['diagramId', 'elementId', 'properties']);
   const { diagramId, elementId, properties: props } = args;
+
+  // If elementType is provided, delegate to replace handler first
+  if (args.elementType) {
+    const replaceResult = await handleReplaceElement({
+      diagramId,
+      elementId,
+      newType: args.elementType,
+    });
+    const replaceData = JSON.parse(replaceResult.content[0].text as string);
+    // If no additional properties to set, return the replace result
+    if (!props || Object.keys(props).length === 0) {
+      return replaceResult;
+    }
+    // Use the new element ID for subsequent property setting (may have changed)
+    const newElementId = replaceData.elementId || elementId;
+    const updatedArgs = { ...args, elementId: newElementId, elementType: undefined };
+    const propsResult = await handleSetProperties(updatedArgs);
+    // Merge newType into the final result so callers can see the type change
+    const propsData = JSON.parse(propsResult.content[0].text as string);
+    return jsonResult({ ...propsData, newType: args.elementType });
+  }
+
   const diagram = requireDiagram(diagramId);
 
   const modeling = getService(diagram.modeler, 'modeling');
@@ -384,7 +413,9 @@ export const TOOL_DEFINITION = {
     'Also handles: scriptFormat/script on ScriptTask, camunda:connector, camunda:field, camunda:properties, ' +
     'camunda:retryTimeCycle, isExpanded on SubProcess, and cancelActivity on BoundaryEvent (false = non-interrupting). ' +
     'See bpmn://guides/element-properties for the full property catalog by element type. ' +
-    'For loop characteristics, use set_bpmn_loop_characteristics.',
+    'For loop characteristics, use set_bpmn_loop_characteristics. ' +
+    'Supports optional elementType to replace the element type (e.g. bpmn:Task → bpmn:UserTask) — ' +
+    'equivalent to the former replace_bpmn_element tool.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -398,6 +429,33 @@ export const TOOL_DEFINITION = {
         description:
           "Key-value pairs of properties to set. Use 'camunda:' prefix for Camunda extension attributes (e.g. { 'camunda:assignee': 'john', 'camunda:formKey': 'embedded:app:forms/task.html' }).",
         additionalProperties: true,
+      },
+      elementType: {
+        type: 'string',
+        description:
+          'Optional element type to replace the element with (e.g. "bpmn:UserTask", "bpmn:ServiceTask"). ' +
+          'When provided, replaces the element type before setting properties. ' +
+          'Equivalent to the former replace_bpmn_element tool.',
+        enum: [
+          'bpmn:Task',
+          'bpmn:UserTask',
+          'bpmn:ServiceTask',
+          'bpmn:ScriptTask',
+          'bpmn:ManualTask',
+          'bpmn:BusinessRuleTask',
+          'bpmn:SendTask',
+          'bpmn:ReceiveTask',
+          'bpmn:CallActivity',
+          'bpmn:ExclusiveGateway',
+          'bpmn:ParallelGateway',
+          'bpmn:InclusiveGateway',
+          'bpmn:EventBasedGateway',
+          'bpmn:IntermediateCatchEvent',
+          'bpmn:IntermediateThrowEvent',
+          'bpmn:StartEvent',
+          'bpmn:EndEvent',
+          'bpmn:SubProcess',
+        ],
       },
     },
     required: ['diagramId', 'elementId', 'properties'],
