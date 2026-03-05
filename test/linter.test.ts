@@ -209,14 +209,14 @@ describe('linter', () => {
       expect(augmented.content).toHaveLength(1);
     });
 
-    test('appends both PNG and SVG images when includeImage is set', async () => {
+    test('appends both PNG and SVG images when includeImage is ["png","svg"]', async () => {
       const diagramId = await createDiagram();
       const startId = await addElement(diagramId, 'bpmn:StartEvent', { x: 100, y: 100 });
       const endId = await addElement(diagramId, 'bpmn:EndEvent', { x: 300, y: 100 });
       await connect(diagramId, startId, endId);
 
       const diagram = getDiagram(diagramId);
-      diagram!.includeImage = true;
+      diagram!.includeImage = ['png', 'svg'];
 
       const result = {
         content: [{ type: 'text' as const, text: '{"success":true}' }],
@@ -236,6 +236,31 @@ describe('linter', () => {
       // Both should have base64-encoded data
       expect(pngItems[0].data).toBeTruthy();
       expect(svgItems[0].data).toBeTruthy();
+    });
+
+    test('appends only PNG when includeImage is true (backward compat shorthand)', async () => {
+      const diagramId = await createDiagram();
+      const startId = await addElement(diagramId, 'bpmn:StartEvent', { x: 100, y: 100 });
+      const endId = await addElement(diagramId, 'bpmn:EndEvent', { x: 300, y: 100 });
+      await connect(diagramId, startId, endId);
+
+      const diagram = getDiagram(diagramId);
+      diagram!.includeImage = true;
+
+      const result = {
+        content: [{ type: 'text' as const, text: '{"success":true}' }],
+      };
+
+      const augmented = await appendLintFeedback(result, diagram!);
+
+      const pngItems = augmented.content.filter(
+        (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+      );
+      const svgItems = augmented.content.filter(
+        (c: any) => c.type === 'image' && c.mimeType === 'image/svg+xml'
+      );
+      expect(pngItems.length).toBe(1);
+      expect(svgItems.length).toBe(0);
     });
 
     test('surfaces bpmn-mcp/implicit-merge as error in implicit feedback', async () => {

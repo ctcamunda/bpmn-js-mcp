@@ -79,13 +79,13 @@ export interface LayoutDiagramArgs {
   /** When autosizeOnly is true, scope pool resizing to this participant ID. */
   participantId?: string;
   /**
-   * When true, apply a post-layout pass that replaces non-orthogonal
+   * When false, disable the post-layout pass that replaces non-orthogonal
    * (Z-shaped or diagonal) forward sequence-flow waypoints with clean
    * L-shaped or 2-point straight paths.
    *
    * Works in full layout mode (runs after rebuild + connection routing)
    * and in labelsOnly mode (standalone routing cleanup without moving elements).
-   * Default: false.
+   * Default: true (always-on).
    */
   straightenFlows?: boolean;
 }
@@ -101,7 +101,7 @@ async function handleLabelsOnlyMode(
   const totalMoved = flowLabelsCentered + elementLabelsMoved;
 
   let straightenedFlowCount = 0;
-  if (opts?.straightenFlows) {
+  if (opts?.straightenFlows !== false) {
     const elementRegistry = getService(diagram.modeler, 'elementRegistry');
     straightenedFlowCount = straightenNonOrthogonalFlows(elementRegistry.getAll());
     if (straightenedFlowCount > 0) await syncXml(diagram);
@@ -112,7 +112,7 @@ async function handleLabelsOnlyMode(
     flowLabelsCentered,
     elementLabelsMoved,
     totalMoved,
-    ...(opts?.straightenFlows ? { straightenedFlowCount } : {}),
+    ...(opts?.straightenFlows !== false ? { straightenedFlowCount } : {}),
     message:
       totalMoved > 0 || straightenedFlowCount > 0
         ? [
@@ -422,9 +422,10 @@ function shouldAutosizePools(args: LayoutDiagramArgs, diagram: any): boolean {
  * Apply the optional post-layout straightening pass.
  * Replaces non-orthogonal forward-flow waypoints with clean L-shapes.
  * Returns the count of straightened connections (added to reroutedCount).
+ * Runs by default; pass straightenFlows: false to disable.
  */
 function applyPostLayoutStraighten(args: LayoutDiagramArgs, diagram: any): number {
-  if (!args.straightenFlows) return 0;
+  if (args.straightenFlows === false) return 0;
   const allElements = getService(diagram.modeler, 'elementRegistry').getAll();
   return straightenNonOrthogonalFlows(allElements);
 }

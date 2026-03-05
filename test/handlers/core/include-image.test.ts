@@ -1,8 +1,8 @@
 /**
  * Tests for optional PNG image content in mutating tool responses.
  *
- * When a diagram is created with includeImage: true, every mutating tool
- * response should include an ImageContent item with the diagram as PNG.
+ * When a diagram is created with includeImage, every mutating tool
+ * response appends ImageContent items for the requested formats.
  */
 import { describe, test, expect, beforeEach } from 'vitest';
 import { handleCreateDiagram, handleAddElement, handleConnect } from '../../../src/handlers';
@@ -13,16 +13,20 @@ describe('includeImage option on create_bpmn_diagram', () => {
     clearDiagrams();
   });
 
-  test('create_bpmn_diagram with includeImage:true returns image content', async () => {
+  test('create_bpmn_diagram with includeImage:true returns PNG (backward compat)', async () => {
     const result = await handleCreateDiagram({ includeImage: true });
-    expect(result.content.length).toBeGreaterThanOrEqual(1);
-    // Should have at least one image content item
-    const imageItem = result.content.find((c: any) => c.type === 'image');
-    expect(imageItem).toBeDefined();
-    expect((imageItem as any).mimeType).toBe('image/png');
+    const pngItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+    );
+    const svgItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/svg+xml'
+    );
+    expect(pngItems.length).toBe(1);
+    // true = ['png'] only — no SVG
+    expect(svgItems.length).toBe(0);
   });
 
-  test('create_bpmn_diagram without includeImage returns image content by default', async () => {
+  test('create_bpmn_diagram without includeImage returns PNG image by default', async () => {
     const result = await handleCreateDiagram({});
     const imageItem = result.content.find((c: any) => c.type === 'image');
     expect(imageItem).toBeDefined();
@@ -35,9 +39,47 @@ describe('includeImage option on create_bpmn_diagram', () => {
     expect(imageItem).toBeUndefined();
   });
 
+  test("create_bpmn_diagram with includeImage:['png'] returns only PNG", async () => {
+    const result = await handleCreateDiagram({ includeImage: ['png'] });
+    const pngItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+    );
+    const svgItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/svg+xml'
+    );
+    expect(pngItems.length).toBe(1);
+    expect(svgItems.length).toBe(0);
+  });
+
+  test("create_bpmn_diagram with includeImage:['svg'] returns only SVG", async () => {
+    const result = await handleCreateDiagram({ includeImage: ['svg'] });
+    const pngItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+    );
+    const svgItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/svg+xml'
+    );
+    expect(pngItems.length).toBe(0);
+    expect(svgItems.length).toBe(1);
+  });
+
+  test("create_bpmn_diagram with includeImage:['png','svg'] returns both", async () => {
+    const result = await handleCreateDiagram({ includeImage: ['png', 'svg'] });
+    const pngItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+    );
+    const svgItems = result.content.filter(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/svg+xml'
+    );
+    expect(pngItems.length).toBe(1);
+    expect(svgItems.length).toBe(1);
+  });
+
   test('image content is valid base64-encoded PNG', async () => {
     const result = await handleCreateDiagram({ includeImage: true });
-    const imageItem = result.content.find((c: any) => c.type === 'image') as any;
+    const imageItem = result.content.find(
+      (c: any) => c.type === 'image' && c.mimeType === 'image/png'
+    ) as any;
     expect(imageItem).toBeDefined();
 
     // Decode base64 and check it's a PNG (magic bytes: 89 50 4e 47)

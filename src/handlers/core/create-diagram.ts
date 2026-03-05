@@ -3,7 +3,13 @@
  */
 // @mutating
 
-import { type ToolResult, type HintLevel } from '../../types';
+import {
+  type ToolResult,
+  type HintLevel,
+  type IncludeImage,
+  type IncludeImageFormat,
+  resolveIncludeFormats,
+} from '../../types';
 import {
   storeDiagram,
   generateDiagramId,
@@ -32,11 +38,14 @@ export interface CreateDiagramArgs {
    */
   cloneFrom?: string;
   /**
-   * When true (default), every mutating tool response appends an ImageContent item with
-   * the current diagram rendered as a base64-encoded PNG (mimeType: image/png).
-   * Set to false to keep responses small (e.g. in CI or batch mode). Default: true.
+   * Which image formats to append to every mutating tool response.
+   * - `['png']`        — 2× resolution PNG only (default when omitted)
+   * - `['svg']`        — cropped SVG only
+   * - `['png', 'svg']` — both formats
+   * - `true`           — shorthand for `['png']`
+   * - `false`          — no images
    */
-  includeImage?: boolean;
+  includeImage?: IncludeImage;
 }
 
 /** Convert a human name into a valid BPMN process id (XML NCName). */
@@ -93,23 +102,29 @@ const WORKFLOW_CONTEXT_GUIDANCE: Record<
   },
 };
 
-/** Append PNG (with SVG fallback) and SVG image content to a ToolResult (non-fatal). */
-async function appendPngImage(result: ToolResult, modeler: any): Promise<void> {
+/** Append requested image formats to a ToolResult (non-fatal). */
+async function appendImages(
+  result: ToolResult,
+  modeler: any,
+  formats: IncludeImageFormat[]
+): Promise<void> {
+  if (formats.length === 0) return;
   try {
-    const { svgToPngWithFallback } = await import('../../svg-to-png');
+    const { svgToPngWithFallback, cropSvgToViewBox } = await import('../../svg-to-png');
     const { svg } = await modeler.saveSVG();
-    const { data: pngData, mimeType: pngMime } = svgToPngWithFallback(svg);
-    const base64Png = pngData.toString('base64');
-    result.content.push({
-      type: 'image',
-      data: base64Png,
-      mimeType: pngMime,
-      annotations: { audience: ['user'] },
-    });
-    // Also append SVG to ease visual comparison between renderers
-    // (skip if fallback already produced SVG — avoid duplicate)
-    if (pngMime !== 'image/svg+xml') {
-      const base64Svg = Buffer.from(svg, 'utf-8').toString('base64');
+
+    if (formats.includes('png')) {
+      const { data: pngData, mimeType: pngMime } = svgToPngWithFallback(svg);
+      result.content.push({
+        type: 'image',
+        data: pngData.toString('base64'),
+        mimeType: pngMime,
+        annotations: { audience: ['user'] },
+      });
+    }
+
+    if (formats.includes('svg')) {
+      const base64Svg = Buffer.from(cropSvgToViewBox(svg), 'utf-8').toString('base64');
       result.content.push({
         type: 'image',
         data: base64Svg,
@@ -178,7 +193,7 @@ export async function handleCreateDiagram(args: CreateDiagramArgs): Promise<Tool
     name: args.name,
     draftMode: args.draftMode ?? false,
     hintLevel,
-    includeImage: args.includeImage ?? true,
+    includeImage: args.includeImage ?? ['png'],
   });
 
   const effectiveDraft = hintLevel === 'none' || (args.draftMode ?? false);
@@ -214,11 +229,9 @@ export async function handleCreateDiagram(args: CreateDiagramArgs): Promise<Tool
 
   const result = jsonResult(resultData);
 
-  // Append PNG image content when includeImage is set (default: true)
-  const effectiveIncludeImage = args.includeImage ?? true;
-  if (effectiveIncludeImage) {
-    await appendPngImage(result, modeler);
-  }
+  // Append image(s) when includeImage is set (default: ['png'])
+  const formats = resolveIncludeFormats(args.includeImage ?? ['png']);
+  await appendImages(result, modeler, formats);
 
   return result;
 }
@@ -271,13 +284,19 @@ export const TOOL_DEFINITION = {
           'Provide the diagram ID to clone from. Returns a new diagram ID.',
       },
       includeImage: {
-        type: 'boolean',
         description:
-          'When true (default), every mutating tool response appends two ImageContent items: ' +
-          'a base64-encoded PNG (mimeType: image/png) and a base64-encoded SVG (mimeType: image/svg+xml) ' +
-          'of the current diagram state. ' +
-          'Set to false to keep responses small (e.g. in CI pipelines or batch processing). ' +
-          'Suitable for visual UIs that display a live diagram preview after each change.',
+          'List of image formats to append to every mutating tool response. ' +
+          "Pass ['png'] for a 2\u00d7-resolution PNG, ['svg'] for a cropped SVG, " +
+          "or ['png', 'svg'] for both. " +
+          "Also accepts boolean: true = ['png'] (default when omitted), false = no images. " +
+          'Set to [] or false to keep responses small (CI / batch mode).',
+        anyOf: [
+          {
+            type: 'array',
+            items: { type: 'string', enum: ['png', 'svg'] },
+          },
+          { type: 'boolean' },
+        ],
       },
     },
   },

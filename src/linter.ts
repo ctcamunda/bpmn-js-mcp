@@ -6,7 +6,13 @@
  * from the working directory.
  */
 
-import { type DiagramState, type ToolResult, type HintLevel } from './types';
+import {
+  type DiagramState,
+  type ToolResult,
+  type HintLevel,
+  type IncludeImageFormat,
+  resolveIncludeFormats,
+} from './types';
 import type { BpmnDefinitions } from './bpmn-types';
 import type { LintConfig, LintResults, FlatLintIssue } from './bpmnlint-types';
 import { suggestFix } from './lint-suggestions';
@@ -333,23 +339,37 @@ const INCREMENTAL_NOISE_RULES = new Set([
   'no-implicit-end',
 ]);
 
-/** Append PNG (with SVG fallback) and SVG image content to a ToolResult (non-fatal). */
-async function appendPngImageContent(result: ToolResult, modeler: any): Promise<void> {
+/** Append requested image formats to a ToolResult (non-fatal). */
+async function appendImageContent(
+  result: ToolResult,
+  modeler: any,
+  formats: IncludeImageFormat[]
+): Promise<void> {
+  if (formats.length === 0) return;
   try {
-    const { svgToPngWithFallback } = await import('./svg-to-png');
+    const { svgToPngWithFallback, tightenSvgViewBox } = await import('./svg-to-png');
     const { svg } = await modeler.saveSVG();
-    const { data: pngData, mimeType: pngMime } = svgToPngWithFallback(svg);
-    const base64Png = pngData.toString('base64');
-    result.content.push({
-      type: 'image',
-      data: base64Png,
-      mimeType: pngMime,
-      annotations: { audience: ['user'] },
-    });
-    // Also append SVG to ease visual comparison between renderers
-    // (skip if fallback already produced SVG — avoid duplicate)
-    if (pngMime !== 'image/svg+xml') {
-      const base64Svg = Buffer.from(svg, 'utf-8').toString('base64');
+    // Compute tight bounds from the element registry for accurate viewBox cropping
+    let allElements: any[] | undefined;
+    try {
+      allElements = modeler.get('elementRegistry').getAll();
+    } catch {
+      // elementRegistry not available — fall back to origin-strip only
+    }
+    const tightSvg = tightenSvgViewBox(svg, allElements);
+
+    if (formats.includes('png')) {
+      const { data: pngData, mimeType: pngMime } = svgToPngWithFallback(tightSvg);
+      result.content.push({
+        type: 'image',
+        data: pngData.toString('base64'),
+        mimeType: pngMime,
+        annotations: { audience: ['user'] },
+      });
+    }
+
+    if (formats.includes('svg')) {
+      const base64Svg = Buffer.from(tightSvg, 'utf-8').toString('base64');
       result.content.push({
         type: 'image',
         data: base64Svg,
@@ -452,7 +472,8 @@ export async function appendLintFeedback(
 
   const hintLevel = resolveHintLevel(diagram);
   const willAppendFeedback = hintLevel !== 'none';
-  const willAppendImage = !!diagram.includeImage;
+  const imageFormats = resolveIncludeFormats(diagram.includeImage);
+  const willAppendImage = imageFormats.length > 0;
 
   if (!willAppendFeedback && !willAppendImage) return result;
 
@@ -468,7 +489,7 @@ export async function appendLintFeedback(
   }
 
   if (willAppendImage) {
-    await appendPngImageContent(result, diagram.modeler);
+    await appendImageContent(result, diagram.modeler, imageFormats);
   }
 
   return result;

@@ -129,7 +129,6 @@ export default tseslint.config(
       'src/handlers/properties/set-properties.ts',
       'src/handlers/helpers.ts',
       'src/handlers/layout/layout-diagram.ts',
-      'src/prompt-definitions.ts',
       'src/rebuild/container-layout.ts',
     ],
     rules: {

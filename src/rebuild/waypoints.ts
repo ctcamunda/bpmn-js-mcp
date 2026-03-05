@@ -69,12 +69,13 @@ const OBSTRUCTION_DETOUR_GAP = 20;
 /**
  * Same-Y tolerance (px) for treating two element centre-Y values as identical.
  *
- * Zero drift is expected in headless mode (no bpmn-js grid snap on programmatic
- * moves), but a small safety margin guards against floating-point rounding in
- * intermediate position computations and any future UI-driven moves where the
- * 10px top-left snap can shift gateway centres by up to 5px.
+ * Set to 10px to absorb the systematic drift that arises from gateway/task
+ * height differences: a 50px gateway (midY at +25) next to an 80px task
+ * (midY at +40) aligned to a 10px grid can produce a 5px–10px centre-Y
+ * mismatch.  `assignLShapeWaypoints` snaps both endpoints to a shared Y
+ * when the drift is within this tolerance, ensuring the path is orthogonal.
  */
-export const SAME_Y_TOLERANCE = 5;
+export const SAME_Y_TOLERANCE = 10;
 
 /**
  * Shrink factor applied to element bounding boxes when testing for path
@@ -116,12 +117,13 @@ function findLShapeObstructions(
     };
     if (rect.width <= 0 || rect.height <= 0) continue;
 
-    // Same-Y connection uses a 2-point straight path; no midX turn.
+    // Same-Y connection uses a 2-point straight path at the shared Y; no midX turn.
     const isSameY = Math.abs(sourceMidY - targetMidY) <= SAME_Y_TOLERANCE;
+    const sharedMidY = (sourceMidY + targetMidY) / 2;
     const intersects = isSameY
       ? segmentIntersectsRect(
-          { x: sourceRight, y: sourceMidY },
-          { x: targetLeft, y: targetMidY },
+          { x: sourceRight, y: sharedMidY },
+          { x: targetLeft, y: sharedMidY },
           rect
         )
       : segmentIntersectsRect(
@@ -248,9 +250,12 @@ function assignLShapeWaypoints(
 ): void {
   const midX = Math.round((sourceRight + targetLeft) / 2);
   if (Math.abs(sourceMidY - targetMidY) <= SAME_Y_TOLERANCE) {
+    // Snap both endpoints to a single shared Y so the 2-point path is truly
+    // horizontal (not a diagonal caused by different individual midY values).
+    const sharedY = Math.round((sourceMidY + targetMidY) / 2);
     conn.waypoints = [
-      { x: sourceRight, y: sourceMidY, original: { x: sourceRight, y: sourceMidY } },
-      { x: targetLeft, y: targetMidY, original: { x: targetLeft, y: targetMidY } },
+      { x: sourceRight, y: sharedY, original: { x: sourceRight, y: sharedY } },
+      { x: targetLeft, y: sharedY, original: { x: targetLeft, y: sharedY } },
     ];
     return;
   }
@@ -372,6 +377,15 @@ export function resetStaleWaypoints(conn: any): void {
 
   // Gateway fan-out: always reset for sufficiently offset targets
   if (source.type?.includes('Gateway')) {
+    // Very small drift (within SAME_Y_TOLERANCE): snap to shared-Y straight path.
+    // applyGatewayFanoutReset skips this range (drift ≤ halfHeight) and
+    // detectStaleRouting won't trigger for a clean 2-point diagonal, so
+    // handle it explicitly here before falling through to the stale checks.
+    if (Math.abs(sourceMidY - targetMidY) <= SAME_Y_TOLERANCE) {
+      const siblingBounds = getSiblingBounds(conn);
+      assignLShapeWaypoints(conn, sourceRight, targetLeft, sourceMidY, targetMidY, siblingBounds);
+      return;
+    }
     if (
       applyGatewayFanoutReset(conn, source, sourceMidY, targetMidY, targetLeft, sourceHalfHeight)
     ) {

@@ -13,6 +13,28 @@
  */
 export type HintLevel = 'none' | 'minimal' | 'full';
 
+/** Image format token for includeImage. */
+export type IncludeImageFormat = 'png' | 'svg';
+
+/**
+ * Controls which image formats are appended to mutating tool responses.
+ *
+ * - `Array<IncludeImageFormat>` — explicit list, e.g. `['png']`, `['svg']`, `['png', 'svg']`
+ * - `true`  — backward-compat shorthand for `['png']`
+ * - `false` — no images (keep responses small)
+ */
+export type IncludeImage = IncludeImageFormat[] | boolean;
+
+/**
+ * Normalise any IncludeImage value to a concrete set of formats.
+ * `undefined` and `false` → `[]`; `true` → `['png']`.
+ */
+export function resolveIncludeFormats(value: IncludeImage | undefined): IncludeImageFormat[] {
+  if (!value) return [];
+  if (value === true) return ['png'];
+  return value as IncludeImageFormat[];
+}
+
 /** Minimal interface for the bpmn-js Modeler services we use. */
 export interface BpmnModeler {
   get(service: string): any;
@@ -55,14 +77,17 @@ export interface DiagramState {
    */
   pinnedConnections?: Set<string>;
   /**
-   * When true, every mutating tool response appends an ImageContent item
-   * with the current diagram rendered as a base64-encoded PNG.
+   * Which image formats to append to every mutating tool response.
    *
-   * Set via `create_bpmn_diagram` with `includeImage: true`.
-   * Opt-in to keep responses small by default while allowing visual UIs to
-   * receive a live diagram preview after each change.
+   * - `['png']`         — PNG only (2× resolution, cropped to diagram content)
+   * - `['svg']`         — SVG only (cropped)
+   * - `['png', 'svg']`  — both
+   * - `true`            — shorthand for `['png']` (backward-compat)
+   * - `false`/`undefined` — no images
+   *
+   * Set via `create_bpmn_diagram` with `includeImage`.
    */
-  includeImage?: boolean;
+  includeImage?: IncludeImage;
 }
 
 /** A single text item in a tool result. */

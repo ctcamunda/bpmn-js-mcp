@@ -7,7 +7,21 @@
  */
 
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { type PromptDefinition, ADDITIONAL_PROMPTS } from './prompt-definitions';
+
+/** Reusable interface for prompt definitions. */
+interface PromptDefinition {
+  name: string;
+  title: string;
+  description: string;
+  arguments?: Array<{
+    name: string;
+    description: string;
+    required?: boolean;
+  }>;
+  getMessages: (
+    args: Record<string, string>
+  ) => Array<{ role: 'user' | 'assistant'; content: { type: 'text'; text: string } }>;
+}
 
 // ── Shared modeling guidelines ─────────────────────────────────────────────
 
@@ -71,12 +85,20 @@ const PROMPTS: PromptDefinition[] = [
             `\`add_bpmn_element_chain\` with a gateway, inspect the \`connectionIds\` map ` +
             `in the response — flows from elements BEFORE the gateway are already wired ` +
             `and must NOT be recreated with \`connect_bpmn_elements\`.\n\n` +
+            `**Retry / loop-back flows (CRITICAL):**\n` +
+            `When a flow loops back to a task that already has an incoming flow (e.g. a retry path), ` +
+            `you MUST insert an explicit merge gateway first:\n` +
+            `1. Use \`add_bpmn_element\` with \`flowId\` set to the existing incoming flow ID to insert an ExclusiveGateway inline.\n` +
+            `2. Then connect the retry flow to the new gateway with \`connect_bpmn_elements\`.\n` +
+            `Never connect two flows directly into a non-gateway task — this creates an implicit merge that ` +
+            `causes multiple token activations at runtime and will block the export lint gate.\n\n` +
             `**Workflow (when the user gives you a process to model):**\n` +
             `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
             `2. Build the flow using \`batch_bpmn_operations\` to add elements and connections together\n` +
             `3. Configure tasks (camunda:assignee, camunda:topic, etc.)\n` +
-            `4. \`layout_bpmn_diagram\` to arrange elements — check \`qualityMetrics.orthogonalFlowPercent\` ` +
-            `in the response and re-run layout if below 90%\n` +
+            `4. \`layout_bpmn_diagram\` to arrange elements — non-orthogonal (Z-shaped) flows are ` +
+            `automatically corrected; re-run layout if \`qualityMetrics.orthogonalFlowPercent\` ` +
+            `is still below 90%\n` +
             `5. \`validate_bpmn_diagram\` to check for issues\n` +
             `6. Fix any reported issues\n` +
             `7. \`export_bpmn\` with \`filePath\` to save` +
@@ -122,11 +144,19 @@ const PROMPTS: PromptDefinition[] = [
             `- ServiceTasks: set \`camunda:type\` to "external" and \`camunda:topic\`.\n` +
             `- Gateways: always set condition expressions and a default flow. ` +
             `The default flow must NOT have a conditionExpression.\n\n` +
+            `**Retry / loop-back flows (CRITICAL):**\n` +
+            `When a flow loops back to a task that already has an incoming flow (e.g. a retry path), ` +
+            `you MUST insert an explicit merge gateway first:\n` +
+            `1. Use \`add_bpmn_element\` with \`flowId\` set to the existing incoming flow ID to insert an ExclusiveGateway inline.\n` +
+            `2. Then connect the retry flow to the new gateway with \`connect_bpmn_elements\`.\n` +
+            `Never connect two flows directly into a non-gateway task — this creates an implicit merge that ` +
+            `causes multiple token activations at runtime and will block the export lint gate.\n\n` +
             `**Workflow (when the user gives you a process to model):**\n` +
             `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
             `2. \`create_bpmn_participant\` (with optional lanes)\n` +
             `3. Build flow using \`batch_bpmn_operations\` (add elements + connect in one call)\n` +
-            `4. \`layout_bpmn_diagram\` → \`autosize_bpmn_pools_and_lanes\`\n` +
+            `4. \`layout_bpmn_diagram\` — non-orthogonal flows are automatically corrected; ` +
+            `re-run if \`qualityMetrics.orthogonalFlowPercent\` < 90% → \`autosize_bpmn_pools_and_lanes\`\n` +
             `5. \`validate_bpmn_diagram\` → fix issues\n` +
             `6. \`export_bpmn\` with \`filePath\` to save` +
             SHARED_EFFICIENCY_GUIDELINES +
@@ -188,7 +218,6 @@ const PROMPTS: PromptDefinition[] = [
       },
     ],
   },
-  ...ADDITIONAL_PROMPTS,
 ];
 
 /** List all available prompts. */

@@ -290,7 +290,40 @@ describe('straightenFlows — integration via handleLayoutDiagram', () => {
     void f2; // suppress unused warning
   });
 
-  test('labelsOnly without straightenFlows: does NOT fix non-orthogonal waypoints', async () => {
+  test('labelsOnly without explicit straightenFlows: DOES fix non-orthogonal waypoints (always-on default)', async () => {
+    const diagramId = await createDiagram('Default Straighten');
+    const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
+    const task = await addElement(diagramId, 'bpmn:Task', { name: 'Task' });
+    const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End' });
+    const f1 = await connect(diagramId, start, task);
+    await connect(diagramId, task, end);
+
+    await handleLayoutDiagram({ diagramId });
+
+    const diagram = getDiagram(diagramId)!;
+    const reg = diagram.modeler.get('elementRegistry') as any;
+    const modeling = diagram.modeler.get('modeling') as any;
+
+    // Corrupt a connection
+    const conn = reg.get(f1);
+    const src = conn.source;
+    const tgt = conn.target;
+    modeling.updateWaypoints(conn, [
+      { x: src.x + src.width, y: src.y + src.height / 2 },
+      { x: src.x + src.width + 30, y: src.y + src.height / 2 + 15 }, // diagonal!
+      { x: tgt.x, y: tgt.y + tgt.height / 2 },
+    ]);
+
+    // labelsOnly with default straightenFlows (true)
+    const result = parseResult(await handleLayoutDiagram({ diagramId, labelsOnly: true }));
+
+    // Waypoints should now be orthogonal (default always-on)
+    const fixedWps: Array<{ x: number; y: number }> = reg.get(f1).waypoints;
+    assertOrthogonal(fixedWps, 'f1 after default-on straighten');
+    expect(result.straightenedFlowCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('labelsOnly with straightenFlows: false: does NOT fix non-orthogonal waypoints', async () => {
     const diagramId = await createDiagram('No Straighten');
     const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
     const task = await addElement(diagramId, 'bpmn:Task', { name: 'Task' });
@@ -314,10 +347,10 @@ describe('straightenFlows — integration via handleLayoutDiagram', () => {
       { x: tgt.x, y: tgt.y + tgt.height / 2 },
     ]);
 
-    // labelsOnly WITHOUT straightenFlows
-    await handleLayoutDiagram({ diagramId, labelsOnly: true });
+    // labelsOnly WITH explicit straightenFlows: false (opt-out)
+    await handleLayoutDiagram({ diagramId, labelsOnly: true, straightenFlows: false });
 
-    // Waypoints should STILL be non-orthogonal (unchanged)
+    // Waypoints should STILL be non-orthogonal (unchanged — explicitly disabled)
     const wps: Array<{ x: number; y: number }> = reg.get(f1).waypoints;
     const dx = Math.abs(wps[1].x - wps[0].x);
     const dy = Math.abs(wps[1].y - wps[0].y);

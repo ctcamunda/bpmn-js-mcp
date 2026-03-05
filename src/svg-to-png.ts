@@ -149,18 +149,136 @@ function getSystemFontFiles(): string[] {
 }
 
 /**
+ * Remove the dead space at the SVG origin that bpmn-js leaves in its output.
+ *
+ * bpmn-js `saveSVG()` produces SVGs where:
+ *   width  = viewBox.x + viewBox.width
+ *   height = viewBox.y + viewBox.height
+ *
+ * This means there is an unused whitespace region from (0,0) to
+ * (viewBox.x, viewBox.y).  Resvg (and browsers) will render that blank area
+ * as padding around the actual diagram content.
+ *
+ * Fix: set the SVG `width` / `height` attributes to match the viewBox
+ * dimensions so the renderer clips exactly to the diagram bounding box.
+ */
+export function cropSvgToViewBox(svg: string): string {
+  const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
+  if (!viewBoxMatch) return svg;
+  const parts = viewBoxMatch[1].trim().split(/[\s,]+/);
+  if (parts.length !== 4) return svg;
+  const [, , w, h] = parts.map(Number);
+  if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return svg;
+  // Replace width and height on the opening <svg> element
+  return svg
+    .replace(/(<svg[^>]*)\bwidth="[^"]*"/, `$1width="${w}"`)
+    .replace(/(<svg[^>]*)\bheight="[^"]*"/, `$1height="${h}"`);
+}
+
+/** Padding (px) around diagram content in tightened SVG viewBox. */
+const TIGHTEN_PADDING = 10;
+
+/**
+ * Compute the tight bounding box of all diagram elements, labels, and
+ * connection waypoints from the element registry.
+ *
+ * Handles both shapes (x/y/width/height) and connections (waypoints array).
+ * Labels are included via `el.label.x / el.label.y / el.label.width / el.label.height`.
+ *
+ * @internal Shared between `tightenSvgViewBox` and callers that need raw bounds.
+ */
+export function computeElementBounds(
+  allElements: any[]
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+
+  function update(x1: number, y1: number, x2: number, y2: number): void {
+    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) return;
+    if (x1 < minX) minX = x1;
+    if (y1 < minY) minY = y1;
+    if (x2 > maxX) maxX = x2;
+    if (y2 > maxY) maxY = y2;
+  }
+
+  for (const el of allElements) {
+    // Shape bounds
+    if (el.x !== undefined && el.y !== undefined && el.width && el.height) {
+      update(el.x, el.y, el.x + el.width, el.y + el.height);
+    }
+    // Label bounds
+    if (el.label?.x !== undefined && el.label?.y !== undefined) {
+      const lx = el.label.x,
+        ly = el.label.y;
+      update(lx, ly, lx + (el.label.width || 90), ly + (el.label.height || 20));
+    }
+    // Connection waypoints
+    if (el.waypoints) {
+      for (const wp of el.waypoints) {
+        update(wp.x, wp.y, wp.x, wp.y);
+      }
+    }
+  }
+
+  return minX === Infinity ? null : { minX, minY, maxX, maxY };
+}
+
+/**
+ * Tighten the SVG viewBox to closely fit diagram content.
+ *
+ * When `allElements` is provided (from `elementRegistry.getAll()`), computes
+ * tight bounds from all shapes, labels, and connection waypoints and sets the
+ * viewBox to `(minX-padding, minY-padding, width+2*padding, height+2*padding)`.
+ *
+ * Without `allElements`, falls back to `cropSvgToViewBox` which strips the
+ * bpmn-js origin dead-space but does not tighten to content bounds.
+ *
+ * @param svg         SVG markup from `modeler.saveSVG()`
+ * @param allElements All elements from `elementRegistry.getAll()` (optional)
+ * @param padding     Padding in px around content bounds. Default: 10
+ */
+export function tightenSvgViewBox(
+  svg: string,
+  allElements?: any[],
+  padding = TIGHTEN_PADDING
+): string {
+  if (!allElements || allElements.length === 0) return cropSvgToViewBox(svg);
+
+  try {
+    const bounds = computeElementBounds(allElements);
+    if (!bounds) return cropSvgToViewBox(svg);
+
+    const vbX = Math.round(bounds.minX - padding);
+    const vbY = Math.round(bounds.minY - padding);
+    const vbW = Math.round(bounds.maxX - bounds.minX + 2 * padding);
+    const vbH = Math.round(bounds.maxY - bounds.minY + 2 * padding);
+
+    return svg
+      .replace(/viewBox="[^"]*"/, `viewBox="${vbX} ${vbY} ${vbW} ${vbH}"`)
+      .replace(/(<svg[^>]*)\bwidth="[^"]*"/, `$1width="${vbW}"`)
+      .replace(/(<svg[^>]*)\bheight="[^"]*"/, `$1height="${vbH}"`);
+  } catch {
+    return cropSvgToViewBox(svg);
+  }
+}
+
+/**
  * Convert an SVG string to a PNG buffer.
  *
- * Provides `fontFiles` so the Rust renderer can find system fonts and render
- * text labels inside BPMN diagrams.
+ * Applies bounding-box cropping (strips the blank origin offset from
+ * bpmn-js SVG output) and renders at 2× scale for crisp hi-DPI output.
  *
  * @param svg   The SVG markup (e.g. from `modeler.saveSVG()`)
+ * @param scale Pixel density multiplier (default: 2 for 2× / hi-DPI)
  * @returns     A Buffer containing the PNG image data
  */
-export function svgToPng(svg: string): Buffer {
+export function svgToPng(svg: string, scale = 2): Buffer {
+  const cropped = cropSvgToViewBox(svg);
   const fontFiles = getSystemFontFiles();
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: 'original' as const },
+  const resvg = new Resvg(cropped, {
+    fitTo: { mode: 'zoom' as const, value: scale },
     font: {
       fontFiles,
       // Disable the built-in system font scanner so we control exactly
@@ -193,8 +311,9 @@ export function svgToPngWithFallback(svg: string): { data: Buffer; mimeType: str
   const fontFiles = getSystemFontFiles();
 
   if (fontFiles.length === 0) {
-    // No fonts available — fall back to SVG to avoid blank labels
-    return { data: Buffer.from(svg, 'utf-8'), mimeType: 'image/svg+xml' };
+    // No fonts available — fall back to SVG to avoid blank labels.
+    // Still crop the viewBox offset so the fallback SVG has no dead space.
+    return { data: Buffer.from(cropSvgToViewBox(svg), 'utf-8'), mimeType: 'image/svg+xml' };
   }
 
   const pngBuffer = svgToPng(svg);
