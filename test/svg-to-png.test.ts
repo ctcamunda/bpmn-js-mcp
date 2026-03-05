@@ -8,9 +8,12 @@
  * 1. svgToPng returns a non-empty PNG buffer.
  * 2. An SVG containing a <text> element produces a larger PNG than a blank SVG
  *    (rough proxy for "text was rendered").
+ * 3. Bundled Liberation Sans fonts provide a fallback when no system fonts exist.
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { describe, test, expect } from 'vitest';
-import { svgToPng, svgToPngWithFallback } from '../src/svg-to-png';
+import { svgToPng, svgToPngWithFallback, getBundledFontDir } from '../src/svg-to-png';
 
 const BLANK_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
@@ -75,5 +78,43 @@ describe('svgToPngWithFallback', () => {
     const result = svgToPngWithFallback(BLANK_SVG);
     expect(result.data).toBeInstanceOf(Buffer);
     expect(result.data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('bundled fonts', () => {
+  test('getBundledFontDir returns a directory that exists', () => {
+    const dir = getBundledFontDir();
+    expect(dir).toBeTruthy();
+    expect(fs.existsSync(dir!)).toBe(true);
+  });
+
+  test('bundled fonts directory contains Liberation Sans TTF files', () => {
+    const dir = getBundledFontDir();
+    expect(dir).toBeTruthy();
+    const files = fs.readdirSync(dir!);
+    const ttfFiles = files.filter((f) => f.endsWith('.ttf'));
+    expect(ttfFiles.length).toBeGreaterThanOrEqual(1);
+    expect(ttfFiles).toContain('LiberationSans-Regular.ttf');
+  });
+
+  test('bundled font renders text in SVG with font-family: Arial, sans-serif', () => {
+    // This SVG uses the same font-family as bpmn-js output
+    const bpmnLikeSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+  <rect width="200" height="100" fill="white"/>
+  <text x="20" y="60" font-family="Arial, sans-serif" font-size="20" fill="black">Task Name</text>
+</svg>`;
+    const blankPng = svgToPng(BLANK_SVG);
+    const textPng = svgToPng(bpmnLikeSvg);
+    // The bundled font should allow text rendering even when Arial is not available
+    expect(textPng.length).toBeGreaterThan(blankPng.length);
+  });
+
+  test('bundled fonts directory is under the project root', () => {
+    const dir = getBundledFontDir();
+    expect(dir).toBeTruthy();
+    // Should be either <project>/fonts or <project>/dist/../fonts
+    expect(dir!).toMatch(/fonts$/);
+    expect(fs.existsSync(path.join(dir!, 'LiberationSans-Regular.ttf'))).toBe(true);
   });
 });

@@ -101,6 +101,32 @@ function collectFontFiles(dir: string): string[] {
   return files;
 }
 
+/**
+ * Locate the bundled `fonts/` directory shipped with this package.
+ *
+ * The directory contains Liberation Sans TTF files (metrically equivalent to
+ * Arial) and serves as a guaranteed fallback when no system fonts are available
+ * (e.g. minimal Docker images, AWS Lambda, CI runners).
+ *
+ * Resolution order:
+ * 1. `<packageRoot>/fonts/` — when running from source (`src/`) or tests
+ * 2. `<dist>/../fonts/` — when running from the esbuild bundle (`dist/index.js`)
+ *
+ * Returns `null` if the directory cannot be found (should not happen in a
+ * properly installed package).
+ */
+export function getBundledFontDir(): string | null {
+  // When running from source: __dirname is src/, fonts/ is a sibling
+  const fromSrc = path.resolve(__dirname, '..', 'fonts');
+  if (fs.existsSync(fromSrc) && fs.statSync(fromSrc).isDirectory()) return fromSrc;
+
+  // When running from dist/: __dirname is dist/, fonts/ is a sibling
+  const fromDist = path.resolve(__dirname, '..', 'fonts');
+  if (fs.existsSync(fromDist) && fs.statSync(fromDist).isDirectory()) return fromDist;
+
+  return null;
+}
+
 /** Lazily collected system font file paths (collected once on first use). */
 let _cachedFontFiles: string[] | null = null;
 
@@ -110,6 +136,14 @@ function getSystemFontFiles(): string[] {
   for (const dir of SYSTEM_FONT_DIRS) {
     files.push(...collectFontFiles(dir));
   }
+
+  // Fallback: include bundled Liberation Sans fonts so that text labels
+  // render even when no system fonts are installed.
+  const bundledDir = getBundledFontDir();
+  if (bundledDir) {
+    files.push(...collectFontFiles(bundledDir));
+  }
+
   _cachedFontFiles = files;
   return files;
 }
@@ -132,6 +166,11 @@ export function svgToPng(svg: string): Buffer {
       // Disable the built-in system font scanner so we control exactly
       // which files are loaded (avoids slow scanning and permission issues).
       loadSystemFonts: false,
+      // Map generic CSS font families to Liberation Sans (bundled) so that
+      // bpmn-js SVG output using `font-family: Arial, sans-serif` resolves
+      // correctly even when Arial is not installed.
+      sansSerifFamily: 'Liberation Sans',
+      defaultFontFamily: 'Liberation Sans',
     },
   });
   const rendered = resvg.render();
