@@ -21,26 +21,15 @@ export interface PromptDefinition {
   ) => Array<{ role: 'user' | 'assistant'; content: { type: 'text'; text: string } }>;
 }
 
-// ── Shared helpers ─────────────────────────────────────────────────────────
-
-/** Return arg value or fallback default. */
-function arg(args: Record<string, string>, key: string, fallback = ''): string {
-  return args[key] ?? fallback;
-}
-
-/** Common placeholder defaults for prompt arguments. */
-const DEFAULT_DIAGRAM_ID = '<diagramId>';
-const DEFAULT_ELEMENT_ID = '<elementId>';
-const ARG_DIAGRAM_ID = {
-  name: 'diagramId',
-  description: 'Target diagram ID',
-  required: true as const,
-};
-
 // ── Additional prompts ─────────────────────────────────────────────────────
 
 /** Additional prompts defined in this module. */
-export const ADDITIONAL_PROMPTS: PromptDefinition[] = [
+export const ADDITIONAL_PROMPTS: PromptDefinition[] = [];
+
+// ── Legacy prompts (removed) ───────────────────────────────────────────────
+// The 9 pattern-specific prompts below have been replaced by 3 style-toggle
+// prompts in src/prompts.ts: 'executable', 'executable-pool', 'collaboration'.
+/*
   // ── create-executable-process ────────────────────────────────────────────
   {
     name: 'create-executable-process',
@@ -504,4 +493,4 @@ export const ADDITIONAL_PROMPTS: PromptDefinition[] = [
       ];
     },
   },
-];
+*/

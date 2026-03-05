@@ -62,26 +62,24 @@ For best results, follow this recommended workflow after structural changes:
 
 No separate "repair layout" tool is needed — chain these existing tools for fine-grained control.
 
-## Available Tools (39)
+## Available Tools (30)
 
 ### Core BPMN Tools
 
-| Tool                            | Description                                                          |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `create_bpmn_diagram`           | Create a new BPMN diagram                                            |
-| `add_bpmn_element`              | Add elements (with `flowId` to insert into existing flows)           |
-| `add_bpmn_element_chain`        | Add a chain of elements connected in sequence                        |
-| `connect_bpmn_elements`         | Connect elements with sequence/message flows or associations         |
-| `delete_bpmn_element`           | Remove an element or connection                                      |
-| `move_bpmn_element`             | Move, resize, or reassign an element to a lane                       |
-| `replace_bpmn_element`          | Replace an element's type preserving connections and position        |
-| `set_bpmn_connection_waypoints` | Set custom waypoints on a connection for manual routing              |
-| `list_bpmn_elements`            | List elements with filters (name pattern, type, property)            |
-| `get_bpmn_element_properties`   | Inspect all properties of an element                                 |
-| `validate_bpmn_diagram`         | Validate using bpmnlint (recommended + Camunda 7 + custom MCP rules) |
-| `export_bpmn`                   | Export as BPMN 2.0 XML or SVG (with implicit lint gate)              |
-| `import_bpmn_xml`               | Import existing BPMN XML (auto-layout if no DI)                      |
-| `manage_bpmn_root_elements`     | Create or update shared Message and Signal definitions               |
+| Tool                          | Description                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `create_bpmn_diagram`         | Create a new diagram (use `cloneFrom` to duplicate an existing one)                      |
+| `add_bpmn_element`            | Add elements (use `flowId` to insert, `fromElementId`+`toLaneId` for cross-lane handoff) |
+| `add_bpmn_element_chain`      | Add a chain of elements connected in sequence                                            |
+| `connect_bpmn_elements`       | Connect elements (use `connectionId`+`waypoints` for custom routing)                     |
+| `delete_bpmn_element`         | Remove an element or connection                                                          |
+| `move_bpmn_element`           | Move, resize, or reassign an element to a lane                                           |
+| `list_bpmn_elements`          | List elements with filters (name pattern, type, property)                                |
+| `get_bpmn_element_properties` | Inspect all properties of an element                                                     |
+| `validate_bpmn_diagram`       | Validate using bpmnlint (recommended + Camunda 7 + custom MCP rules)                     |
+| `export_bpmn`                 | Export as BPMN 2.0 XML or SVG (with implicit lint gate)                                  |
+| `import_bpmn_xml`             | Import existing BPMN XML (auto-layout if no DI)                                          |
+| `manage_bpmn_root_elements`   | Create or update shared Message and Signal definitions                                   |
 
 ### Layout & Alignment Tools
 
@@ -104,29 +102,22 @@ No separate "repair layout" tool is needed — chain these existing tools for fi
 
 ### Collaboration Tools
 
-| Tool                                      | Description                                                  |
-| ----------------------------------------- | ------------------------------------------------------------ |
-| `create_bpmn_participant`                 | Create participant pools in a collaboration diagram          |
-| `create_bpmn_lanes`                       | Create swimlanes within a participant pool                   |
-| `assign_bpmn_elements_to_lane`            | Bulk-assign elements to a lane                               |
-| `wrap_bpmn_process_in_collaboration`      | Migrate a process into a collaboration with pools            |
-| `handoff_bpmn_to_lane`                    | Create a cross-lane handoff with auto-connection             |
-| `convert_bpmn_collaboration_to_lanes`     | Convert multi-pool collaboration into single pool with lanes |
-| `autosize_bpmn_pools_and_lanes`           | Resize pools and lanes to fit contained elements             |
-| `analyze_bpmn_lanes`                      | Analyze, suggest, and validate lane assignments              |
-| `redistribute_bpmn_elements_across_lanes` | Rebalance element placement across existing lanes            |
+| Tool                           | Description                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `create_bpmn_participant`      | Create pools (use `wrapExisting` to wrap an existing process)                             |
+| `create_bpmn_lanes`            | Create swimlanes (use `mergeFrom` to convert multi-pool to lanes)                         |
+| `assign_bpmn_elements_to_lane` | Bulk-assign elements to a lane                                                            |
+| `analyze_bpmn_lanes`           | Analyze, suggest, and validate lane assignments (modes: suggest, validate, pool-vs-lanes) |
 
 ### Utility Tools
 
-| Tool                          | Description                                        |
-| ----------------------------- | -------------------------------------------------- |
-| `delete_bpmn_diagram`         | Remove a diagram from memory                       |
-| `list_bpmn_diagrams`          | List all diagrams or get a detailed summary        |
-| `list_bpmn_process_variables` | List all process variables referenced in a diagram |
-| `clone_bpmn_diagram`          | Duplicate a diagram for experimentation            |
-| `diff_bpmn_diagrams`          | Compare two diagrams and return structured diff    |
-| `bpmn_history`                | Undo or redo changes (supports multiple steps)     |
-| `batch_bpmn_operations`       | Execute multiple operations in a single call       |
+| Tool                          | Description                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `delete_bpmn_diagram`         | Remove a diagram from memory                                            |
+| `list_bpmn_diagrams`          | List all diagrams or get a detailed summary (use `compareWith` to diff) |
+| `list_bpmn_process_variables` | List all process variables referenced in a diagram                      |
+| `bpmn_history`                | Undo or redo changes (supports multiple steps)                          |
+| `batch_bpmn_operations`       | Execute multiple operations in a single call                            |
 
 ### Automatic Lint Feedback
 
@@ -156,18 +147,13 @@ Stable, addressable read-context endpoints for AI callers to re-ground context m
 
 ### MCP Prompts
 
-Reusable modeling workflows that guide AI callers through multi-tool patterns:
+Three style-toggle prompts that set the modeling context for the agent session. Each instructs the agent on which BPMN structure to use and reminds it to `export_bpmn` the final result.
 
-| Prompt                         | Description                                                                              |
-| ------------------------------ | ---------------------------------------------------------------------------------------- |
-| `create-executable-process`    | Step-by-step guide to create a complete executable BPMN process for Operaton / Camunda 7 |
-| `convert-to-collaboration`     | Convert a single-pool process into a collaboration with multiple participants            |
-| `add-sla-timer-pattern`        | Add SLA timers using boundary events (interrupting or non-interrupting)                  |
-| `add-approval-pattern`         | Add an approval pattern with gateway, conditions, default flow, and form fields          |
-| `add-error-handling-pattern`   | Add error handling with boundary events or event subprocesses                            |
-| `add-parallel-tasks-pattern`   | Add parallel gateway pattern with concurrent branches and synchronization                |
-| `add-decision-gateway-pattern` | Add an exclusive gateway with multiple conditional branches and a default flow           |
-| `create-lane-based-process`    | Create a swimlane-based process with role separation and handoffs between lanes          |
+| Prompt            | Description                                                                  |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `executable`      | Flat executable process without a pool (Operaton / Camunda 7)                |
+| `executable-pool` | Executable process wrapped in a participant pool, optionally with swim lanes |
+| `collaboration`   | Non-executable multi-pool documentation diagram with message flows           |
 
 ## Output Compatibility
 
