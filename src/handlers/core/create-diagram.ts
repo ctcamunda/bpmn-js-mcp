@@ -31,6 +31,13 @@ export interface CreateDiagramArgs {
    * Provide the diagram ID to clone from.
    */
   cloneFrom?: string;
+  /**
+   * When true, every mutating tool response appends an ImageContent item with
+   * the current diagram rendered as a base64-encoded SVG (mimeType: image/svg+xml).
+   * Opt-in to keep responses small by default. Suitable for visual UIs that
+   * display a live diagram preview. Default: false.
+   */
+  includeImage?: boolean;
 }
 
 /** Convert a human name into a valid BPMN process id (XML NCName). */
@@ -87,26 +94,48 @@ const WORKFLOW_CONTEXT_GUIDANCE: Record<
   },
 };
 
+/** Append SVG image content to a ToolResult (non-fatal). */
+async function appendSvgImage(result: ToolResult, modeler: any): Promise<void> {
+  try {
+    const { svg } = await modeler.saveSVG();
+    const base64 = Buffer.from(svg, 'utf-8').toString('base64');
+    result.content.push({
+      type: 'image',
+      data: base64,
+      mimeType: 'image/svg+xml',
+      annotations: { audience: ['user'] },
+    });
+  } catch {
+    // Non-fatal — image append should never break the primary operation
+  }
+}
+
+/** Handle clone mode: duplicate an existing diagram. */
+async function cloneDiagram(args: CreateDiagramArgs): Promise<ToolResult> {
+  const { requireDiagram } = await import('../helpers');
+  const source = requireDiagram(args.cloneFrom!);
+  const { xml } = await source.modeler.saveXML({ format: true });
+  const newDiagramId = generateDiagramId();
+  const modeler = await createModelerFromXml(xml || '');
+  storeDiagram(newDiagramId, {
+    modeler,
+    xml: xml || '',
+    name: args.name || source.name,
+    includeImage: args.includeImage ?? source.includeImage,
+  });
+  return jsonResult({
+    success: true,
+    diagramId: newDiagramId,
+    clonedFrom: args.cloneFrom,
+    name: args.name || source.name,
+    message: `Cloned diagram ${args.cloneFrom} → ${newDiagramId}`,
+  });
+}
+
 export async function handleCreateDiagram(args: CreateDiagramArgs): Promise<ToolResult> {
   // Clone mode: duplicate an existing diagram
   if (args.cloneFrom) {
-    const { requireDiagram } = await import('../helpers');
-    const source = requireDiagram(args.cloneFrom);
-    const { xml } = await source.modeler.saveXML({ format: true });
-    const newDiagramId = generateDiagramId();
-    const modeler = await createModelerFromXml(xml || '');
-    storeDiagram(newDiagramId, {
-      modeler,
-      xml: xml || '',
-      name: args.name || source.name,
-    });
-    return jsonResult({
-      success: true,
-      diagramId: newDiagramId,
-      clonedFrom: args.cloneFrom,
-      name: args.name || source.name,
-      message: `Cloned diagram ${args.cloneFrom} → ${newDiagramId}`,
-    });
+    return cloneDiagram(args);
   }
 
   const diagramId = generateDiagramId();
@@ -137,6 +166,7 @@ export async function handleCreateDiagram(args: CreateDiagramArgs): Promise<Tool
     name: args.name,
     draftMode: args.draftMode ?? false,
     hintLevel,
+    includeImage: args.includeImage ?? false,
   });
 
   const effectiveDraft = hintLevel === 'none' || (args.draftMode ?? false);
@@ -170,7 +200,14 @@ export async function handleCreateDiagram(args: CreateDiagramArgs): Promise<Tool
   );
   resultData.nextSteps = nextSteps;
 
-  return jsonResult(resultData);
+  const result = jsonResult(resultData);
+
+  // Append SVG image content when includeImage is set
+  if (args.includeImage) {
+    await appendSvgImage(result, modeler);
+  }
+
+  return result;
 }
 
 export const TOOL_DEFINITION = {
@@ -219,6 +256,15 @@ export const TOOL_DEFINITION = {
         description:
           'Clone an existing diagram instead of creating a blank one. ' +
           'Provide the diagram ID to clone from. Returns a new diagram ID.',
+      },
+      includeImage: {
+        type: 'boolean',
+        description:
+          'When true, every mutating tool response appends an ImageContent item with the current ' +
+          'diagram rendered as a base64-encoded SVG (mimeType: image/svg+xml). ' +
+          'Opt-in to keep responses small by default. Suitable for visual UIs that display a live ' +
+          'diagram preview after each change. Default: false. ' +
+          'Deprecated: use hintLevel instead.',
       },
     },
   },

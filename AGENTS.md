@@ -60,24 +60,25 @@ Modular `src/` layout, communicates over **stdio** using the MCP SDK. See [`docs
 
 1. A shared `jsdom` instance polyfills browser APIs (SVG, CSS, structuredClone) so `bpmn-js` can run headlessly.
 2. Diagrams are stored in-memory in a `Map<string, DiagramState>` keyed by generated IDs.
-3. **39 MCP tools** are exposed (see "Tool Naming" below), plus **5 resource templates** (diagram summary, lint, variables, XML, and an executable-Camunda-7 guide) and **8 prompt workflows** (create-executable-process, convert-to-collaboration, add-sla-timer-pattern, add-approval-pattern, add-error-handling-pattern, add-parallel-tasks-pattern, add-decision-gateway-pattern, create-lane-based-process).
+3. **30 MCP tools** are exposed (see "Tool Naming" below), plus **5 resource templates** (diagram summary, lint, variables, XML, and an executable-Camunda-7 guide) and **8 prompt workflows** (create-executable-process, convert-to-collaboration, add-sla-timer-pattern, add-approval-pattern, add-error-handling-pattern, add-parallel-tasks-pattern, add-decision-gateway-pattern, create-lane-based-process). (see "Tool Naming" below), plus **5 resource templates** (diagram summary, lint, variables, XML, and an executable-Camunda-7 guide) and **8 prompt workflows** (create-executable-process, convert-to-collaboration, add-sla-timer-pattern, add-approval-pattern, add-error-handling-pattern, add-parallel-tasks-pattern, add-decision-gateway-pattern, create-lane-based-process).
 4. Each tool handler manipulates the `bpmn-js` modeler API (`modeling`, `elementFactory`, `elementRegistry`) and returns JSON or raw XML/SVG.
 5. `camunda-bpmn-moddle` is registered as a moddle extension, enabling Camunda-specific attributes (e.g. `camunda:assignee`, `camunda:class`, `camunda:formKey`) on elements.
 6. Each handler file **co-locates** its MCP tool definition (`TOOL_DEFINITION`) alongside the handler function, preventing definition drift.
 7. **bpmnlint** is integrated for BPMN validation. The `McpPluginResolver` wraps bpmnlint's `NodeResolver` to support both npm plugins (`bpmnlint-plugin-camunda-compat`) and the bundled custom plugin (`bpmnlint-plugin-bpmn-mcp`). Mutating tool handlers call `appendLintFeedback()` to append error-level lint issues to their response.
 8. **Label adjustment** runs after layout and connection operations, using geometry-based scoring to position external labels away from connection paths.
+9. **SVG image content** can be appended to every mutating tool response by creating a diagram with `includeImage: true`. When enabled, `appendLintFeedback()` calls `modeler.saveSVG()` → base64-encodes the SVG → appends an `ImageContent` item (`type: "image"`, `mimeType: "image/svg+xml"`, `annotations: { audience: ["user"] }`) to the response content array.
 
 ## Tool Naming Convention
 
 **Every tool name includes `bpmn`** to avoid collisions with other MCPs.
 
-- **Core structural tools:** `create_bpmn_diagram`, `add_bpmn_element` (includes insert-into-flow via `flowId`), `connect_bpmn_elements`, `delete_bpmn_element`, `move_bpmn_element` (includes resize via `width`/`height`), `replace_bpmn_element`, `list_bpmn_elements`, `validate_bpmn_diagram`, `align_bpmn_elements` (includes distribute via `orientation`), `export_bpmn`, `import_bpmn_xml`
+- **Core structural tools:** `create_bpmn_diagram`, `add_bpmn_element` (includes insert-into-flow via `flowId`, cross-lane handoff via `fromElementId`+`toLaneId`), `connect_bpmn_elements`, `delete_bpmn_element`, `move_bpmn_element` (includes resize via `width`/`height`), `replace_bpmn_element`, `list_bpmn_elements`, `validate_bpmn_diagram`, `align_bpmn_elements` (includes distribute via `orientation`), `export_bpmn`, `import_bpmn_xml`
 - **Property / extension tools:** `get_bpmn_element_properties`, `set_bpmn_element_properties`, `set_bpmn_input_output_mapping`, `set_bpmn_event_definition`, `set_bpmn_form_data`, `set_bpmn_camunda_listeners` (includes error definitions), `set_bpmn_loop_characteristics`, `set_bpmn_call_activity_variables`, `set_bpmn_connection_waypoints`
-- **Collaboration tools:** `create_bpmn_participant`, `create_bpmn_lanes`, `assign_bpmn_elements_to_lane`, `wrap_bpmn_process_in_collaboration`, `manage_bpmn_root_elements`, `handoff_bpmn_to_lane`, `analyze_bpmn_lanes` (modes: suggest, validate, pool-vs-lanes), `convert_bpmn_collaboration_to_lanes`, `redistribute_bpmn_elements_across_lanes`, `autosize_bpmn_pools_and_lanes`
+- **Collaboration tools:** `create_bpmn_participant`, `create_bpmn_lanes`, `assign_bpmn_elements_to_lane`, `wrap_bpmn_process_in_collaboration`, `manage_bpmn_root_elements`, `analyze_bpmn_lanes` (modes: suggest, validate, pool-vs-lanes), `convert_bpmn_collaboration_to_lanes`, `redistribute_bpmn_elements_across_lanes`, `autosize_bpmn_pools_and_lanes`
 - **History tools:** `bpmn_history`, `diff_bpmn_diagrams`
 - **Batch tools:** `batch_bpmn_operations`
 - **Utility tools:** `delete_bpmn_diagram`, `list_bpmn_diagrams` (includes diagram summary via `diagramId`), `list_bpmn_process_variables`, `clone_bpmn_diagram`, `layout_bpmn_diagram`, `add_bpmn_element_chain`
-- **Internal-only handlers (not registered as MCP tools):** `handleCreateCollaboration`, `handleInsertElement`, `handleSplitParticipantIntoLanes`, `handleSummarizeDiagram`, `handleDuplicateElement`, `handleSetScript`, `handleAdjustLabels`, `handleSuggestLaneOrganization`, `handleValidateLaneOrganization`, `handleSuggestPoolVsLanes`
+- **Internal-only handlers (not registered as MCP tools):** `handleCreateCollaboration`, `handleInsertElement`, `handleSplitParticipantIntoLanes`, `handleSummarizeDiagram`, `handleDuplicateElement`, `handleSetScript`, `handleAdjustLabels`, `handleSuggestLaneOrganization`, `handleValidateLaneOrganization`, `handleSuggestPoolVsLanes`, `handleHandoffToLane`
 
 ## Build & Run
 

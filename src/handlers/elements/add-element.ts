@@ -27,6 +27,7 @@ import {
 } from './add-element-response';
 import { validateElementType, ALLOWED_ELEMENT_TYPES } from '../validation';
 import { illegalCombinationError, typeMismatchError, duplicateError } from '../../errors';
+import { handleHandoffToLane } from '../collaboration/handoff-to-lane';
 
 export interface AddElementArgs {
   diagramId: string;
@@ -70,6 +71,24 @@ export interface AddElementArgs {
    * Only valid for boundary events — ignored for other element types.
    */
   cancelActivity?: boolean;
+  /**
+   * Handoff shorthand: the source element ID to connect from.
+   * When combined with toLaneId, places the new element in the target lane and
+   * auto-connects from this element (sequence or message flow). Both fromElementId
+   * and toLaneId must be provided together.
+   */
+  fromElementId?: string;
+  /**
+   * Handoff shorthand: the target lane ID where the new element is placed.
+   * When combined with fromElementId, creates a cross-lane handoff in one call.
+   * Both fromElementId and toLaneId must be provided together.
+   */
+  toLaneId?: string;
+  /**
+   * Optional label for the connection created during a handoff
+   * (when fromElementId + toLaneId are used).
+   */
+  connectionLabel?: string;
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────
@@ -127,6 +146,43 @@ export async function handleAddElement(args: AddElementArgs): Promise<ToolResult
       elementType: args.elementType,
       name: args.name,
     });
+  }
+
+  // Handoff shorthand: toLaneId + fromElementId delegate to handleHandoffToLane
+  if (args.toLaneId !== undefined || args.fromElementId !== undefined) {
+    if (!args.toLaneId || !args.fromElementId) {
+      throw illegalCombinationError(
+        'Both fromElementId and toLaneId must be provided together for handoff.',
+        ['fromElementId', 'toLaneId']
+      );
+    }
+    const handoffResult = await handleHandoffToLane({
+      diagramId: args.diagramId,
+      fromElementId: args.fromElementId,
+      toLaneId: args.toLaneId,
+      elementType: args.elementType,
+      name: args.name,
+      connectionLabel: args.connectionLabel,
+    });
+    // Re-shape result to match add_element response shape
+    const parsed = JSON.parse(handoffResult.content[0].text!);
+    const handoffText = JSON.stringify({
+      success: true,
+      elementId: parsed.createdElementId,
+      elementType: args.elementType,
+      handoff: {
+        connectionId: parsed.connectionId,
+        connectionType: parsed.connectionType,
+        crossPool: parsed.crossPool,
+        fromElementId: parsed.fromElementId,
+        toLaneId: args.toLaneId,
+      },
+      message: parsed.message,
+      nextSteps: parsed.nextSteps,
+    });
+    return {
+      content: [{ type: 'text', text: handoffText }, ...handoffResult.content.slice(1)],
+    } as any;
   }
 
   const {

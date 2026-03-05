@@ -123,7 +123,7 @@ export async function handleHandoffToLane(args: HandoffToLaneArgs): Promise<Tool
     laneId: toLaneId,
   });
 
-  const addParsed = JSON.parse(addResult.content[0].text);
+  const addParsed = JSON.parse(addResult.content[0].text!);
   const newElementId = addParsed.elementId;
 
   // Connect source to the new element
@@ -135,7 +135,7 @@ export async function handleHandoffToLane(args: HandoffToLaneArgs): Promise<Tool
     // Connection type is auto-detected: SequenceFlow for same-pool, MessageFlow for cross-pool
   });
 
-  const connectParsed = JSON.parse(connectResult.content[0].text);
+  const connectParsed = JSON.parse(connectResult.content[0].text!);
   const connectionId = connectParsed.connectionId;
   const connectionType =
     connectParsed.connectionType || (crossPool ? 'bpmn:MessageFlow' : 'bpmn:SequenceFlow');

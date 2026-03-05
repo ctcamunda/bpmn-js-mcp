@@ -54,12 +54,46 @@ export interface DiagramState {
    * and restores them after the pipeline. Full layout clears this set.
    */
   pinnedConnections?: Set<string>;
+  /**
+   * When true, every mutating tool response appends an ImageContent item
+   * with the current diagram rendered as a base64-encoded SVG.
+   *
+   * Set via `create_bpmn_diagram` with `includeImage: true`.
+   * Opt-in to keep responses small by default while allowing visual UIs to
+   * receive a live diagram preview after each change.
+   */
+  includeImage?: boolean;
+}
+
+/** A single text item in a tool result. */
+export interface TextContent {
+  type: 'text';
+  text: string;
+}
+
+/** A single image item in a tool result. */
+export interface ImageContent {
+  type: 'image';
+  data: string;
+  mimeType: string;
+  /** Optional audience annotation (e.g. ["user"] to show only to humans). */
+  annotations?: Record<string, unknown>;
 }
 
 /** Shape of the JSON returned by tool handlers that wrap results. */
 export interface ToolResult {
   [key: string]: unknown;
-  content: Array<{ type: string; text: string }>;
+  content: Array<{
+    type: string;
+    /** For text content items. */
+    text?: string;
+    /** For image content items. */
+    data?: string;
+    /** For image content items. */
+    mimeType?: string;
+    /** Optional audience annotation. */
+    annotations?: Record<string, unknown>;
+  }>;
 }
 
 // ── Tool execution context ─────────────────────────────────────────────────

@@ -140,10 +140,7 @@ import {
   handleCreateParticipant,
   TOOL_DEFINITION as CREATE_PARTICIPANT_DEF,
 } from './collaboration/create-participant';
-import {
-  handleHandoffToLane,
-  TOOL_DEFINITION as HANDOFF_TO_LANE_DEF,
-} from './collaboration/handoff-to-lane';
+import { handleHandoffToLane } from './collaboration/handoff-to-lane';
 import {
   handleSuggestLaneOrganization,
   handleValidateLaneOrganization,
@@ -202,7 +199,7 @@ const TOOL_REGISTRY: ToolRegistration[] = [
   // set_bpmn_connection_waypoints removed: waypoints+connectionId parameters on connect_bpmn_elements
   { definition: ASSIGN_ELEMENTS_TO_LANE_DEF, handler: handleAssignElementsToLane },
   // wrap_bpmn_process_in_collaboration removed: wrapExisting on create_bpmn_participant
-  { definition: HANDOFF_TO_LANE_DEF, handler: handleHandoffToLane },
+  // handoff_bpmn_to_lane removed: fromElementId + toLaneId params on add_bpmn_element
   // convert_bpmn_collaboration_to_lanes removed: mergeFrom on create_bpmn_lanes
   // autosize_bpmn_pools_and_lanes removed: autosizeOnly on layout_bpmn_diagram
 ];

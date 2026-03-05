@@ -257,7 +257,7 @@ async function writeExportToFile(filePath: string, content: ToolResult['content'
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(filePath, content[0].text, 'utf-8');
+  fs.writeFileSync(filePath, content[0].text!, 'utf-8');
 }
 
 export async function handleExportBpmn(

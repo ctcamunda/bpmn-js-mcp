@@ -188,7 +188,7 @@ async function runChainLoop(
       laneId: el.laneId || args.laneId,
       ...(postGateway ? {} : previousId ? { afterElementId: previousId } : {}),
     });
-    const parsed = JSON.parse(addResult.content[0].text);
+    const parsed = JSON.parse(addResult.content[0].text!);
     createdElements.push({
       elementId: parsed.elementId,
       elementType: el.elementType,

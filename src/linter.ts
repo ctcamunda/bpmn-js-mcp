@@ -333,6 +333,87 @@ const INCREMENTAL_NOISE_RULES = new Set([
   'no-implicit-end',
 ]);
 
+/** Append SVG image content to a ToolResult (non-fatal). */
+async function appendSvgImageContent(result: ToolResult, modeler: any): Promise<void> {
+  try {
+    const { svg } = await modeler.saveSVG();
+    const base64 = Buffer.from(svg, 'utf-8').toString('base64');
+    result.content.push({
+      type: 'image',
+      data: base64,
+      mimeType: 'image/svg+xml',
+      annotations: { audience: ['user'] },
+    });
+  } catch {
+    // Non-fatal
+  }
+}
+
+/** Append layout hint and connectivity warnings to result (full hint level only). */
+async function appendFullHints(result: ToolResult, diagram: DiagramState): Promise<void> {
+  const LAYOUT_HINT_THRESHOLD = 5;
+  const mutations = diagram.mutationsSinceLayout ?? 0;
+  if (mutations >= LAYOUT_HINT_THRESHOLD && mutations % LAYOUT_HINT_THRESHOLD === 0) {
+    result.content.push({
+      type: 'text',
+      text: `\n💡 Hint: ${mutations} changes since last layout — consider calling layout_bpmn_diagram to arrange elements.`,
+    });
+  }
+  try {
+    const elementRegistry = diagram.modeler.get('elementRegistry');
+    const flowElements = elementRegistry.filter(
+      (el: any) =>
+        el.type &&
+        (el.type.includes('Event') ||
+          el.type.includes('Task') ||
+          el.type.includes('Gateway') ||
+          el.type.includes('SubProcess') ||
+          el.type.includes('CallActivity'))
+    );
+    if (flowElements.length > 3) {
+      const connectivityWarnings = buildConnectivityWarnings(elementRegistry);
+      if (connectivityWarnings.length > 0) {
+        result.content.push({ type: 'text', text: '\n' + connectivityWarnings.join('\n') });
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
+/** Append lint error feedback lines to result. */
+async function appendLintErrors(result: ToolResult, diagram: DiagramState): Promise<void> {
+  try {
+    const issues = await lintDiagramFlat(diagram);
+    const errors = issues.filter(
+      (i) => i.severity === 'error' && !INCREMENTAL_NOISE_RULES.has(i.rule)
+    );
+    if (errors.length === 0) return;
+    const elementRegistry = diagram.modeler.get('elementRegistry');
+    const dId = getDiagramId(diagram) ?? '';
+    const lines = errors.map((i) => {
+      let line = `- [${i.rule}] ${i.message}${i.elementId ? ` (${i.elementId})` : ''}`;
+      const fix = suggestFix(i, dId);
+      if (fix) line += ` → ${fix}`;
+      if (i.elementId && (i.rule === 'no-implicit-start' || i.rule === 'no-implicit-end')) {
+        const el = elementRegistry.get(i.elementId);
+        if (el?.type === 'bpmn:BoundaryEvent' && !el.host) {
+          line +=
+            ' — This boundary event is not attached to a host element. ' +
+            'Use add_bpmn_element with hostElementId to attach it to a task or subprocess.';
+        }
+      }
+      return line;
+    });
+    result.content.push({
+      type: 'text',
+      text: `\n⚠ Lint issues (${errors.length}):\n${lines.join('\n')}`,
+    });
+  } catch {
+    // Linting should never break the primary tool response
+  }
+}
+
 /**
  * Append lint error feedback to a tool result.
  *
@@ -354,87 +435,27 @@ export async function appendLintFeedback(
   result: ToolResult,
   diagram: DiagramState
 ): Promise<ToolResult> {
-  // In batch mode, skip intermediate lint to avoid N full lint runs
   if (batchMode) return result;
 
   const hintLevel = resolveHintLevel(diagram);
+  const willAppendFeedback = hintLevel !== 'none';
+  const willAppendImage = !!diagram.includeImage;
 
-  // In none mode, skip all feedback
-  if (hintLevel === 'none') return result;
+  if (!willAppendFeedback && !willAppendImage) return result;
 
-  // Bump version since a mutation just occurred, and invalidate stale cache
   bumpDiagramVersion(diagram);
   const diagramId = getDiagramId(diagram);
   if (diagramId) invalidateLintCache(diagramId);
 
-  // Lint errors: shown at 'minimal' and 'full'
-  try {
-    const issues = await lintDiagramFlat(diagram);
-    const errors = issues.filter(
-      (i) => i.severity === 'error' && !INCREMENTAL_NOISE_RULES.has(i.rule)
-    );
-    if (errors.length > 0) {
-      // Enrich error messages with contextual hints
-      const elementRegistry = diagram.modeler.get('elementRegistry');
-      const dId = getDiagramId(diagram) ?? '';
-      const lines = errors.map((i) => {
-        let line = `- [${i.rule}] ${i.message}${i.elementId ? ` (${i.elementId})` : ''}`;
-        // Add fix suggestion from the shared FIX_SUGGESTIONS table
-        const fix = suggestFix(i, dId);
-        if (fix) {
-          line += ` → ${fix}`;
-        }
-        // Add context for boundary event issues
-        if (i.elementId && (i.rule === 'no-implicit-start' || i.rule === 'no-implicit-end')) {
-          const el = elementRegistry.get(i.elementId);
-          if (el?.type === 'bpmn:BoundaryEvent' && !el.host) {
-            line +=
-              ' — This boundary event is not attached to a host element. ' +
-              'Use add_bpmn_element with hostElementId to attach it to a task or subprocess.';
-          }
-        }
-        return line;
-      });
-      const feedback = `\n⚠ Lint issues (${errors.length}):\n${lines.join('\n')}`;
-      result.content.push({ type: 'text', text: feedback });
+  if (willAppendFeedback) {
+    await appendLintErrors(result, diagram);
+    if (hintLevel === 'full') {
+      await appendFullHints(result, diagram);
     }
-  } catch {
-    // Linting should never break the primary tool response
   }
 
-  // Layout hint and connectivity warnings: only at 'full' level
-  if (hintLevel === 'full') {
-    // Append layout hint when many structural mutations have occurred without layout
-    const LAYOUT_HINT_THRESHOLD = 5;
-    const mutations = diagram.mutationsSinceLayout ?? 0;
-    if (mutations >= LAYOUT_HINT_THRESHOLD && mutations % LAYOUT_HINT_THRESHOLD === 0) {
-      result.content.push({
-        type: 'text',
-        text: `\n💡 Hint: ${mutations} changes since last layout — consider calling layout_bpmn_diagram to arrange elements.`,
-      });
-    }
-
-    // Surface connectivity warnings post-mutation (when diagram has >3 elements)
-    try {
-      const elementRegistry = diagram.modeler.get('elementRegistry');
-      const flowElements = elementRegistry.filter(
-        (el: any) =>
-          el.type &&
-          (el.type.includes('Event') ||
-            el.type.includes('Task') ||
-            el.type.includes('Gateway') ||
-            el.type.includes('SubProcess') ||
-            el.type.includes('CallActivity'))
-      );
-      if (flowElements.length > 3) {
-        const connectivityWarnings = buildConnectivityWarnings(elementRegistry);
-        if (connectivityWarnings.length > 0) {
-          result.content.push({ type: 'text', text: '\n' + connectivityWarnings.join('\n') });
-        }
-      }
-    } catch {
-      // Non-fatal — connectivity check should never break the primary operation
-    }
+  if (willAppendImage) {
+    await appendSvgImageContent(result, diagram.modeler);
   }
 
   return result;

@@ -14,7 +14,7 @@ describe('tool-definitions', () => {
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
 
   test('exports the expected number of tools', () => {
-    expect(TOOL_DEFINITIONS.length).toBe(31);
+    expect(TOOL_DEFINITIONS.length).toBe(30);
   });
 
   test.each([
@@ -54,7 +54,7 @@ describe('tool-definitions', () => {
     // set_bpmn_connection_waypoints removed — use connect_bpmn_elements with connectionId + waypoints
     'assign_bpmn_elements_to_lane',
     // wrap_bpmn_process_in_collaboration removed — use create_bpmn_participant with wrapExisting
-    'handoff_bpmn_to_lane',
+    // handoff_bpmn_to_lane removed — use add_bpmn_element with fromElementId + toLaneId
     // convert_bpmn_collaboration_to_lanes removed — use create_bpmn_lanes with mergeFrom
     // autosize_bpmn_pools_and_lanes removed — use layout_bpmn_diagram with autosizeOnly
   ])("includes tool '%s'", (name) => {

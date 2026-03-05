@@ -15,6 +15,8 @@ export const TOOL_DEFINITION = {
     '**⚠ Boundary events:** Use elementType=bpmn:BoundaryEvent with hostElementId. ' +
     'Do NOT use bpmn:IntermediateCatchEvent for boundary events. ' +
     '**Subprocesses:** Default is expanded (350×200); set isExpanded=false for collapsed. ' +
+    '**Cross-lane handoff:** Use fromElementId + toLaneId to place the new element in a target lane and ' +
+    'auto-connect from a source element (replaces handoff_bpmn_to_lane). ' +
     'See bpmn://guides/modeling-elements for naming conventions, integration patterns, and event subprocess guidance.',
   inputSchema: {
     type: 'object',
@@ -203,6 +205,27 @@ export const TOOL_DEFINITION = {
           'true = interrupting (default, host activity is cancelled when event fires). ' +
           'Ignored for non-boundary event element types.',
       },
+      fromElementId: {
+        type: 'string',
+        description:
+          'Cross-lane handoff shorthand: the source element ID to connect from. ' +
+          'When combined with toLaneId, places the new element in the target lane and ' +
+          'auto-connects from this element (SequenceFlow for same-pool, MessageFlow for cross-pool). ' +
+          'Both fromElementId and toLaneId must be provided together.',
+      },
+      toLaneId: {
+        type: 'string',
+        description:
+          'Cross-lane handoff shorthand: the target lane ID where the new element is placed. ' +
+          'When combined with fromElementId, creates a cross-lane handoff in one call. ' +
+          'Both fromElementId and toLaneId must be provided together.',
+      },
+      connectionLabel: {
+        type: 'string',
+        description:
+          'Optional label for the connection created during a handoff ' +
+          '(when fromElementId + toLaneId are used).',
+      },
     },
     required: ['diagramId', 'elementType'],
     allOf: [
@@ -273,6 +296,17 @@ export const TOOL_DEFINITION = {
           name: 'Send Notification',
           participantId: 'Participant_ServiceDesk',
           afterElementId: 'UserTask_ReviewTicket',
+        },
+      },
+      {
+        title: 'Cross-lane handoff: add element in a lane and connect from source',
+        value: {
+          diagramId: '<diagram-id>',
+          elementType: 'bpmn:UserTask',
+          name: 'Approve Request',
+          fromElementId: 'UserTask_SubmitRequest',
+          toLaneId: 'Lane_Approver',
+          connectionLabel: 'Submit for approval',
         },
       },
     ],
