@@ -289,6 +289,63 @@ function handleProperties(element: any, camundaProps: Record<string, any>, diagr
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
+/**
+ * Apply standard and camunda properties to an element.
+ * Handles special cases: retryTimeCycle, connector, field, properties,
+ * script properties, documentation, and empty-string camunda attribute skipping.
+ * Returns the (possibly updated) camundaProps for hint building.
+ */
+function applyPropsToElement(
+  element: any,
+  standardProps: Record<string, any>,
+  camundaProps: Record<string, any>,
+  diagram: ReturnType<typeof requireDiagram>
+): void {
+  const modeling = getService(diagram.modeler, 'modeling');
+
+  // Handle `camunda:retryTimeCycle` — creates camunda:FailedJobRetryTimeCycle extension element
+  handleRetryTimeCycle(element, camundaProps, diagram);
+  // Handle `camunda:connector` — creates camunda:Connector extension element
+  handleConnector(element, camundaProps, diagram);
+  // Handle `camunda:field` — creates camunda:Field extension elements
+  handleField(element, camundaProps, diagram);
+  // Handle `camunda:properties` — creates camunda:Properties extension element
+  handleProperties(element, camundaProps, diagram);
+  // Handle script-related properties (scriptFormat, script, camunda:resource) on ScriptTasks
+  handleScriptProperties(element, standardProps, camundaProps, diagram);
+
+  // Handle `documentation` — creates/updates bpmn:documentation child element
+  if ('documentation' in standardProps) {
+    const moddle = getService(diagram.modeler, 'moddle');
+    const bo = element.businessObject;
+    const docText = standardProps['documentation'];
+    delete standardProps['documentation'];
+    if (docText != null && docText !== '') {
+      const docElement = moddle.create('bpmn:Documentation', { text: String(docText) });
+      docElement.$parent = bo;
+      bo.documentation = [docElement];
+      modeling.updateProperties(element, { documentation: bo.documentation });
+    } else {
+      bo.documentation = [];
+      modeling.updateProperties(element, { documentation: bo.documentation });
+    }
+  }
+
+  if (Object.keys(standardProps).length > 0) {
+    modeling.updateProperties(element, standardProps);
+  }
+
+  // Strip empty-string camunda extension attributes — they are misleading
+  // in the XML (e.g. camunda:dueDate="") and should simply be omitted.
+  const nonEmptyCamundaProps: Record<string, any> = {};
+  for (const [key, value] of Object.entries(camundaProps)) {
+    if (value !== '') nonEmptyCamundaProps[key] = value;
+  }
+  if (Object.keys(nonEmptyCamundaProps).length > 0) {
+    modeling.updateProperties(element, nonEmptyCamundaProps);
+  }
+}
+
 export async function handleSetProperties(args: SetPropertiesArgs): Promise<ToolResult> {
   validateArgs(args, ['diagramId', 'elementId', 'properties']);
   const { diagramId, elementId, properties: props } = args;
@@ -315,23 +372,17 @@ export async function handleSetProperties(args: SetPropertiesArgs): Promise<Tool
   }
 
   const diagram = requireDiagram(diagramId);
-
   const modeling = getService(diagram.modeler, 'modeling');
   const elementRegistry = getService(diagram.modeler, 'elementRegistry');
 
   let element = requireElement(elementRegistry, elementId);
-
   element = handleIsExpandedOnSubProcess(element, props, diagram);
 
   const standardProps: Record<string, any> = {};
   const camundaProps: Record<string, any> = {};
-
   for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith('camunda:')) {
-      camundaProps[key] = value;
-    } else {
-      standardProps[key] = value;
-    }
+    if (key.startsWith('camunda:')) camundaProps[key] = value;
+    else standardProps[key] = value;
   }
 
   // Auto-set camunda:type="external" when camunda:topic is provided
@@ -342,52 +393,11 @@ export async function handleSetProperties(args: SetPropertiesArgs): Promise<Tool
   handleDefaultOnGateway(element, standardProps, elementRegistry, modeling);
   handleConditionExpression(standardProps, getService(diagram.modeler, 'moddle'));
 
-  // Handle `camunda:retryTimeCycle` — creates camunda:FailedJobRetryTimeCycle extension element
-  handleRetryTimeCycle(element, camundaProps, diagram);
-
-  // Handle `camunda:connector` — creates camunda:Connector extension element
-  handleConnector(element, camundaProps, diagram);
-
-  // Handle `camunda:field` — creates camunda:Field extension elements
-  handleField(element, camundaProps, diagram);
-
-  // Handle `camunda:properties` — creates camunda:Properties extension element
-  handleProperties(element, camundaProps, diagram);
-
-  // Handle script-related properties (scriptFormat, script, camunda:resource) on ScriptTasks
-  handleScriptProperties(element, standardProps, camundaProps, diagram);
-
-  // Handle `documentation` — creates/updates bpmn:documentation child element
-  if ('documentation' in standardProps) {
-    const moddle = getService(diagram.modeler, 'moddle');
-    const bo = element.businessObject;
-    const docText = standardProps['documentation'];
-    delete standardProps['documentation'];
-
-    if (docText != null && docText !== '') {
-      const docElement = moddle.create('bpmn:Documentation', { text: String(docText) });
-      docElement.$parent = bo;
-      bo.documentation = [docElement];
-      modeling.updateProperties(element, { documentation: bo.documentation });
-    } else {
-      // Clear documentation
-      bo.documentation = [];
-      modeling.updateProperties(element, { documentation: bo.documentation });
-    }
-  }
-
-  if (Object.keys(standardProps).length > 0) {
-    modeling.updateProperties(element, standardProps);
-  }
-  if (Object.keys(camundaProps).length > 0) {
-    modeling.updateProperties(element, camundaProps);
-  }
+  applyPropsToElement(element, standardProps, camundaProps, diagram);
 
   await syncXml(diagram);
 
-  // Build contextual hints based on what was set
   const hints = buildPropertyHints(props, camundaProps, element);
-
   const result = jsonResult({
     success: true,
     elementId: element.id,

@@ -296,6 +296,32 @@ export async function handleConnect(args: ConnectArgs): Promise<ToolResult> {
   return handlePairConnect(args);
 }
 
+/**
+ * Build result hints and warning for a pair connection.
+ * Returns { hints, defaultConditionWarning }.
+ */
+function buildPairConnectHints(
+  autoHint: string | undefined,
+  isDefault: boolean | undefined,
+  conditionExpression: string | undefined,
+  sourceType: string,
+  source: any
+): { hints: string[]; defaultConditionWarning: string | undefined } {
+  const hints: string[] = [];
+  if (autoHint) hints.push(autoHint);
+  if (sourceType === 'bpmn:ParallelGateway') {
+    const balanceWarning = checkParallelGatewayBalance(source.businessObject);
+    if (balanceWarning) hints.push(balanceWarning);
+  }
+  const defaultConditionWarning =
+    isDefault && conditionExpression
+      ? 'Warning: default flow has a condition expression — the condition is ignored at runtime by ' +
+        'the Camunda 7 / Operaton engine. Remove the condition from the default flow, or mark a ' +
+        'different flow as default.'
+      : undefined;
+  return { hints, defaultConditionWarning };
+}
+
 /** Pair-mode connect: source+target with dedup guard and connection properties. */
 async function handlePairConnect(args: ConnectArgs): Promise<ToolResult> {
   const { diagramId, label, conditionExpression, isDefault, sourceElementId, targetElementId } =
@@ -352,14 +378,13 @@ async function handlePairConnect(args: ConnectArgs): Promise<ToolResult> {
     await handleLayoutDiagram({ diagramId });
   }
 
-  // Check parallel gateway branch balance (task 4a): warn when a branch
-  // from a parallel split doesn't reach a matching join gateway.
-  const hints: string[] = [];
-  if (autoHint) hints.push(autoHint);
-  if (sourceType === 'bpmn:ParallelGateway') {
-    const balanceWarning = checkParallelGatewayBalance(source.businessObject);
-    if (balanceWarning) hints.push(balanceWarning);
-  }
+  const { hints, defaultConditionWarning } = buildPairConnectHints(
+    autoHint,
+    isDefault,
+    conditionExpression,
+    sourceType,
+    source
+  );
 
   const result = jsonResult({
     success: true,
@@ -369,6 +394,7 @@ async function handlePairConnect(args: ConnectArgs): Promise<ToolResult> {
     diagramCounts: buildElementCounts(elementRegistry),
     message: `Connected ${sourceElementId} to ${targetElementId}`,
     ...(hints.length > 0 ? { hint: hints.join('\n\n') } : {}),
+    ...(defaultConditionWarning ? { warning: defaultConditionWarning } : {}),
     nextSteps: [
       {
         tool: 'layout_bpmn_diagram',

@@ -9,6 +9,22 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { type PromptDefinition, ADDITIONAL_PROMPTS } from './prompt-definitions';
 
+// ── Shared modeling guidelines ─────────────────────────────────────────────
+
+const SHARED_EFFICIENCY_GUIDELINES =
+  `\n\n**Efficiency guidelines:**\n` +
+  `- **Batch operations:** When performing multiple sequential operations (adding elements, ` +
+  `connecting them, setting properties), prefer wrapping them in a single ` +
+  `\`batch_bpmn_operations\` call to reduce round-trips.\n` +
+  `- **Visual feedback:** Pass \`includeImage: true\` when calling \`create_bpmn_diagram\` ` +
+  `so that every mutating tool response appends a live SVG preview.\n` +
+  `- **Reduce noise during construction:** Pass \`hintLevel: "minimal"\` when calling ` +
+  `\`create_bpmn_diagram\` to suppress connectivity warnings during incremental building. ` +
+  `Switch to full validation at the end via \`validate_bpmn_diagram\`.\n` +
+  `- **Always specify \`afterElementId\`** when extending an existing flow with ` +
+  `\`add_bpmn_element_chain\` — omitting it creates a disconnected segment that requires ` +
+  `extra manual wiring.\n`;
+
 // ── Shared export reminder ─────────────────────────────────────────────────
 
 const EXPORT_REMINDER =
@@ -33,8 +49,9 @@ const PROMPTS: PromptDefinition[] = [
         content: {
           type: 'text',
           text:
-            `You are now modeling an **executable BPMN process without a pool** ` +
-            `for Operaton / Camunda 7.\n\n` +
+            `You are now operating in **executable BPMN process mode (no pool)** ` +
+            `for Operaton / Camunda 7. When the user describes a workflow to model, ` +
+            `follow these rules and build the diagram accordingly.\n\n` +
             `**Structure rules:**\n` +
             `- Do NOT create any participant pools — model a flat process.\n` +
             `- The process must be executable: set \`isExecutable: true\` on the process ` +
@@ -45,16 +62,21 @@ const PROMPTS: PromptDefinition[] = [
             `- UserTasks: set \`camunda:assignee\` or \`camunda:candidateGroups\`. ` +
             `Add form fields with \`set_bpmn_form_data\` or set \`camunda:formRef\`.\n` +
             `- ServiceTasks: set \`camunda:type\` to "external" and \`camunda:topic\` ` +
-            `for external task workers.\n` +
+            `for external task workers. Note: output mappings on external tasks are set ` +
+            `by the worker, not via static expressions in the diagram.\n` +
             `- BusinessRuleTasks: set \`camunda:decisionRef\` to a DMN decision table ID.\n` +
             `- Gateways: always set condition expressions on outgoing flows and mark ` +
-            `one flow as the default with \`isDefault: true\`.\n\n` +
-            `**Workflow:**\n` +
-            `1. \`create_bpmn_diagram\` → build flow → configure tasks\n` +
-            `2. \`layout_bpmn_diagram\` to arrange elements\n` +
-            `3. \`validate_bpmn_diagram\` to check for issues\n` +
-            `4. Fix any reported issues\n` +
-            `5. \`export_bpmn\` with \`filePath\` to save` +
+            `one flow as the default with \`isDefault: true\`. The default flow must NOT ` +
+            `have a conditionExpression — it is the engine fallback.\n\n` +
+            `**Workflow (when the user gives you a process to model):**\n` +
+            `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
+            `2. Build the flow using \`batch_bpmn_operations\` to add elements and connections together\n` +
+            `3. Configure tasks (camunda:assignee, camunda:topic, etc.)\n` +
+            `4. \`layout_bpmn_diagram\` to arrange elements\n` +
+            `5. \`validate_bpmn_diagram\` to check for issues\n` +
+            `6. Fix any reported issues\n` +
+            `7. \`export_bpmn\` with \`filePath\` to save` +
+            SHARED_EFFICIENCY_GUIDELINES +
             EXPORT_REMINDER,
         },
       },
@@ -74,8 +96,9 @@ const PROMPTS: PromptDefinition[] = [
         content: {
           type: 'text',
           text:
-            `You are now modeling an **executable BPMN process with a participant pool** ` +
-            `for Operaton / Camunda 7.\n\n` +
+            `You are now operating in **executable BPMN process mode with a participant pool** ` +
+            `for Operaton / Camunda 7. When the user describes a workflow to model, ` +
+            `follow these rules and build the diagram accordingly.\n\n` +
             `**Structure rules:**\n` +
             `- Create ONE expanded participant pool for the executable process using ` +
             `\`create_bpmn_participant\`.\n` +
@@ -93,13 +116,16 @@ const PROMPTS: PromptDefinition[] = [
             `- UserTasks: set \`camunda:assignee\` or \`camunda:candidateGroups\`. ` +
             `Match the lane role (e.g. lane "Manager" → candidateGroups: "managers").\n` +
             `- ServiceTasks: set \`camunda:type\` to "external" and \`camunda:topic\`.\n` +
-            `- Gateways: always set condition expressions and a default flow.\n\n` +
-            `**Workflow:**\n` +
-            `1. \`create_bpmn_diagram\` → \`create_bpmn_participant\` (with optional lanes)\n` +
-            `2. Build flow with \`add_bpmn_element\` (specify participantId/laneId)\n` +
-            `3. \`layout_bpmn_diagram\` → \`autosize_bpmn_pools_and_lanes\`\n` +
-            `4. \`validate_bpmn_diagram\` → fix issues\n` +
-            `5. \`export_bpmn\` with \`filePath\` to save` +
+            `- Gateways: always set condition expressions and a default flow. ` +
+            `The default flow must NOT have a conditionExpression.\n\n` +
+            `**Workflow (when the user gives you a process to model):**\n` +
+            `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
+            `2. \`create_bpmn_participant\` (with optional lanes)\n` +
+            `3. Build flow using \`batch_bpmn_operations\` (add elements + connect in one call)\n` +
+            `4. \`layout_bpmn_diagram\` → \`autosize_bpmn_pools_and_lanes\`\n` +
+            `5. \`validate_bpmn_diagram\` → fix issues\n` +
+            `6. \`export_bpmn\` with \`filePath\` to save` +
+            SHARED_EFFICIENCY_GUIDELINES +
             EXPORT_REMINDER,
         },
       },
@@ -119,9 +145,10 @@ const PROMPTS: PromptDefinition[] = [
         content: {
           type: 'text',
           text:
-            `You are now modeling a **collaboration diagram for documentation**. ` +
+            `You are now operating in **collaboration diagram mode (documentation)**. ` +
             `This diagram is NOT intended for execution — it documents how multiple ` +
-            `organisations or systems interact.\n\n` +
+            `organisations or systems interact. When the user describes a collaboration ` +
+            `to model, follow these rules and build the diagram accordingly.\n\n` +
             `**Structure rules:**\n` +
             `- Create **multiple expanded participant pools** using ` +
             `\`create_bpmn_participant\` with a \`participants\` array (each with ` +
@@ -142,14 +169,16 @@ const PROMPTS: PromptDefinition[] = [
             `interactions.\n` +
             `- Use SendTask/ReceiveTask or message throw/catch events to make ` +
             `cross-pool communication explicit.\n\n` +
-            `**Workflow:**\n` +
-            `1. \`create_bpmn_diagram\` with \`workflowContext: "multi-organization"\`\n` +
+            `**Workflow (when the user gives you a collaboration to model):**\n` +
+            `1. \`create_bpmn_diagram\` with \`workflowContext: "multi-organization"\`, ` +
+            `\`includeImage: true\`, and \`hintLevel: "minimal"\`\n` +
             `2. \`create_bpmn_participant\` with multiple expanded pools\n` +
-            `3. Build each pool's internal flow independently\n` +
+            `3. Build each pool's internal flow using \`batch_bpmn_operations\`\n` +
             `4. \`connect_bpmn_elements\` for message flows between pools\n` +
             `5. \`layout_bpmn_diagram\` → \`autosize_bpmn_pools_and_lanes\`\n` +
             `6. \`export_bpmn\` with \`filePath\` and \`skipLint: true\` to save ` +
             `(non-executable diagrams may trigger lint warnings)` +
+            SHARED_EFFICIENCY_GUIDELINES +
             EXPORT_REMINDER,
         },
       },

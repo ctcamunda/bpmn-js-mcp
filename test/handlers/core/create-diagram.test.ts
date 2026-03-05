@@ -33,6 +33,19 @@ describe('create_bpmn_diagram', () => {
     expect(xml).toContain('Order Fulfillment');
   });
 
+  test('process id strips dashes and special characters', async () => {
+    const diagramId = await createDiagram('Executable Process - Camunda 7 (no pool)');
+    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
+      .text;
+    // Should not contain dashes or parentheses in the id attribute
+    const idMatch = xml.match(/id="(Process_[^"]+)"/);
+    expect(idMatch).not.toBeNull();
+    const processId = idMatch![1];
+    expect(processId).not.toMatch(/[-()]/);
+    // Should only contain alphanumeric and underscores
+    expect(processId).toMatch(/^Process_[a-zA-Z0-9_]+$/);
+  });
+
   test('does not change process id when no name is provided', async () => {
     const diagramId = await createDiagram();
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]

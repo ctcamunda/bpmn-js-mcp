@@ -44,7 +44,7 @@ export interface CreateDiagramArgs {
 function toProcessId(name: string): string {
   const sanitized = name
     .replace(/\s+/g, '_')
-    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .replace(/[^a-zA-Z0-9_]/g, '')
     .replace(/^[^a-zA-Z_]/, '_');
   return `Process_${sanitized || '1'}`;
 }

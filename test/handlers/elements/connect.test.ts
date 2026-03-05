@@ -122,6 +122,67 @@ describe('connect_bpmn_elements', () => {
   });
 });
 
+describe('connect_bpmn_elements — isDefault + conditionExpression warning', () => {
+  beforeEach(() => {
+    clearDiagrams();
+  });
+
+  test('emits a warning when isDefault and conditionExpression are both set', async () => {
+    const diagramId = await createDiagram();
+    const gw = await addElement(diagramId, 'bpmn:ExclusiveGateway', { name: 'Check?' });
+    const taskA = await addElement(diagramId, 'bpmn:Task', { name: 'Approve' });
+    const taskB = await addElement(diagramId, 'bpmn:Task', { name: 'Reject' });
+
+    // Connect first branch (normal conditional)
+    await handleConnect({
+      diagramId,
+      sourceElementId: gw,
+      targetElementId: taskA,
+      conditionExpression: '${valid == true}',
+    });
+
+    // Connect second branch with BOTH isDefault AND conditionExpression — should warn
+    const res = parseResult(
+      await handleConnect({
+        diagramId,
+        sourceElementId: gw,
+        targetElementId: taskB,
+        conditionExpression: '${valid == false}',
+        isDefault: true,
+      })
+    );
+
+    expect(res.success).toBe(true);
+    expect(res.warning).toMatch(/default.*condition|condition.*default/i);
+  });
+
+  test('no warning when isDefault is set without conditionExpression', async () => {
+    const diagramId = await createDiagram();
+    const gw = await addElement(diagramId, 'bpmn:ExclusiveGateway', { name: 'Check?' });
+    const taskA = await addElement(diagramId, 'bpmn:Task', { name: 'Approve' });
+    const taskB = await addElement(diagramId, 'bpmn:Task', { name: 'Reject' });
+
+    await handleConnect({
+      diagramId,
+      sourceElementId: gw,
+      targetElementId: taskA,
+      conditionExpression: '${valid == true}',
+    });
+
+    const res = parseResult(
+      await handleConnect({
+        diagramId,
+        sourceElementId: gw,
+        targetElementId: taskB,
+        isDefault: true,
+      })
+    );
+
+    expect(res.success).toBe(true);
+    expect(res.warning).toBeUndefined();
+  });
+});
+
 describe('connect_bpmn_elements — descriptive flow IDs', () => {
   beforeEach(() => {
     clearDiagrams();

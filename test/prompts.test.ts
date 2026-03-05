@@ -62,4 +62,39 @@ describe('getPrompt', () => {
       expect(result.messages).toHaveLength(1);
     }
   });
+
+  test('prompts set modeling context and wait for user assignment (not imperative)', () => {
+    for (const name of ['executable', 'executable-pool', 'collaboration']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      // Should be contextual — explain mode, not issue immediate build command
+      expect(text).toMatch(/you are now (operating|modeling)/i);
+      // Should NOT start with an imperative "Create a process named..." instruction
+      expect(text).not.toMatch(/^Create an? .*(process|diagram)/i);
+    }
+  });
+
+  test('prompts recommend batch_bpmn_operations for multiple operations', () => {
+    for (const name of ['executable', 'executable-pool', 'collaboration']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      expect(text).toContain('batch_bpmn_operations');
+    }
+  });
+
+  test('prompts recommend includeImage: true for visual feedback', () => {
+    for (const name of ['executable', 'executable-pool', 'collaboration']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      expect(text).toContain('includeImage');
+    }
+  });
+
+  test('prompts recommend hintLevel: minimal during construction', () => {
+    for (const name of ['executable', 'executable-pool', 'collaboration']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      expect(text).toContain('hintLevel');
+    }
+  });
 });

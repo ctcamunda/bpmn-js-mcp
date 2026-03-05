@@ -56,6 +56,7 @@ import emptySubprocess from './rules/empty-subprocess';
 import danglingBoundaryEvent from './rules/dangling-boundary-event';
 import receiveTaskMissingMessage from './rules/receive-task-missing-message';
 import layoutNeedsAlignment from './rules/layout-needs-alignment';
+import defaultFlowWithCondition from './rules/default-flow-with-condition';
 
 /**
  * All custom lint rules keyed by rule name (without plugin prefix).
@@ -111,6 +112,7 @@ export const rules: Record<string, any> = {
   'dangling-boundary-event': danglingBoundaryEvent,
   'receive-task-missing-message': receiveTaskMissingMessage,
   'layout-needs-alignment': layoutNeedsAlignment,
+  'default-flow-with-condition': defaultFlowWithCondition,
 };
 
 export const configs = {
@@ -162,6 +164,7 @@ export const configs = {
       'bpmn-mcp/dangling-boundary-event': 'warn',
       'bpmn-mcp/receive-task-missing-message': 'warn',
       'bpmn-mcp/layout-needs-alignment': 'warn',
+      'bpmn-mcp/default-flow-with-condition': 'warn',
     },
   },
 };
