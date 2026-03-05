@@ -23,47 +23,9 @@ produce Z-shaped waypoints instead of straight horizontal lines.
 
 ---
 
-### Engine / positioning fixes
-
-- [x] **`moveElementTo`: grid-snap compensation** — alternative to full DI bypass:
-  after computing `targetCenter.y - element.height/2`, predict the snapped top-left
-  (`Math.round(y/10)*10`) and adjust `targetCenter.y` so the snapped center equals
-  the desired center.  (`src/rebuild/container-layout.ts`)
-  > Superseded by the investigation above — no action needed for headless mode. (80517d4)
-
-- [x] **`computePositions`: use a baseline row Y that is grid-compatible for all
-  element types** — change `DEFAULT_ORIGIN.y` (currently 200) to a value where
-  `y - h/2` lands on a 10 px boundary for tasks AND gateways, e.g. 205 (task
-  top=165→170, gateway top=180 → center 205) — or pick 200 and document that gateway
-  snap is unavoidable without DI bypass.  (`src/constants.ts`, `src/rebuild/positioning.ts`)
-  > Superseded — grid snap is not active in headless mode. (80517d4)
-
----
-
-### waypoint / connection routing fixes
-
-
-- [x] **`resetstalewaypoints` same-y tolerance** — the "same-y vertical detour"
-  check uses `<= 10` for detection but the generator (`assignlshapewaypoints`) now uses
-  `<= 5` — the asymmetry is intentional (detection should be more lenient than generation)
-  and was left as-is.  (`src/rebuild/waypoints.ts`) (80517d4)
-
----
-
-### Lint rule improvements
-
-
-- [x] **New lint rule: `gateway-event-center-drift`** — decided against: grid snap
-  does not apply in headless mode so the drift being linted for doesn't occur.
-  The existing `layout-needs-alignment` rule covers non-orthogonal flows generically. (80517d4)
-
----
-
 ### Tool feedback improvements
 
 
-- [ ] **`layout_bpmn_diagram`: add `straightenFlows` boolean option** — deferred;
-  the deduplication pass already covers the main use-case (duplicate waypoints).
-  A full post-layout straightening pass would be a separate feature.
+- [x] **`layout_bpmn_diagram`: add `straightenFlows` boolean option** — implemented as a post-layout pass (`straightenNonOrthogonalFlows` in `src/rebuild/waypoints.ts`) that replaces non-orthogonal (Z-shaped/diagonal) forward sequence-flow waypoints with clean L-shaped or 2-point straight paths. Works in full layout mode and `labelsOnly: true` mode. (9c10c23)
 
 ---
