@@ -11,6 +11,7 @@ export const TOOL_DEFINITION = {
     'Automatically arrange elements in a BPMN diagram using the rebuild-based layout engine, producing a clean left-to-right layout. Handles parallel branches, reconverging gateways, boundary events, subprocesses, pools, lanes, and nested containers. Use this after structural changes (adding gateways, splitting flows) to automatically clean up the layout. ' +
     'Use dryRun to preview changes before applying them. ' +
     'Use labelsOnly: true to only adjust label positions without moving elements. ' +
+    'Use straightenFlows: true to fix non-orthogonal (Z-shaped) connection routing after layout or import. ' +
     '**When NOT to use full layout:** If the diagram has carefully positioned elements, custom label placements, or boundary events, full re-layout may reposition them destructively. In such cases, prefer: (1) labelsOnly: true for label cleanup only, (2) move_bpmn_element for targeted repositioning, (3) scopeElementId parameter to re-layout only one participant/subprocess.',
   inputSchema: {
     type: 'object',
@@ -63,6 +64,15 @@ export const TOOL_DEFINITION = {
         type: 'string',
         description:
           'Optional. When autosizeOnly is true, scope pool resizing to this participant ID.',
+      },
+      straightenFlows: {
+        type: 'boolean',
+        description:
+          'When true, apply a post-layout pass that replaces non-orthogonal (Z-shaped or diagonal) ' +
+          'forward sequence-flow waypoints with clean L-shaped or 2-point straight paths. ' +
+          'Works in both full layout mode and labelsOnly mode (standalone routing cleanup). ' +
+          'Useful after importing diagrams from external tools that produce non-orthogonal routing. ' +
+          'Default: false.',
       },
     },
     required: ['diagramId'],

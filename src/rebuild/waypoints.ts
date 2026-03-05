@@ -347,3 +347,78 @@ export function resetStaleWaypoints(conn: any): void {
 
   assignLShapeWaypoints(conn, sourceRight, targetLeft, sourceMidY, targetMidY, siblingBounds);
 }
+
+// ── Post-layout straightening ──────────────────────────────────────────────
+
+/**
+ * Check whether all segments of a waypoint path are orthogonal.
+ *
+ * A segment is orthogonal when it is strictly horizontal (dy < 1 px) or
+ * strictly vertical (dx < 1 px).  Diagonal segments — where both dx and dy
+ * are ≥ 1 px — indicate a non-orthogonal (Z-shaped or skewed) path.
+ */
+function isFullyOrthogonal(wps: Array<{ x: number; y: number }>): boolean {
+  for (let i = 1; i < wps.length; i++) {
+    const dx = Math.abs(wps[i].x - wps[i - 1].x);
+    const dy = Math.abs(wps[i].y - wps[i - 1].y);
+    if (dx >= 1 && dy >= 1) return false; // diagonal segment
+  }
+  return true;
+}
+
+/**
+ * Post-layout pass: straighten non-orthogonal forward sequence flows.
+ *
+ * After `modeling.layoutConnection()` runs during rebuild, ManhattanLayout may
+ * still produce Z-shaped or diagonal waypoints on connections where the source
+ * and target have a slight Y drift (e.g. gateways shifted by grid snap in
+ * UI mode, or floating-point rounding in complex lane layouts).
+ *
+ * This pass scans all provided connections and replaces any non-orthogonal
+ * forward (left-to-right) sequence flow with a clean L-shape or 2-point
+ * straight path via `assignLShapeWaypoints`.
+ *
+ * **Scope:**
+ * - Only `bpmn:SequenceFlow` connections are considered.
+ * - Only forward (left-to-right) flows: `target.x > source.x + source.width`.
+ * - Back-edge loop-back connections are skipped (handled by `applyAllBackEdgeUShapes`).
+ * - MessageFlow and Association connections are skipped.
+ * - Already-orthogonal connections are skipped (no-op for clean diagrams).
+ *
+ * Mutates `conn.waypoints` directly — call `syncXml` afterwards to persist.
+ *
+ * @param allConnections  All elements from `elementRegistry.getAll()`.
+ * @returns Number of connections whose waypoints were replaced.
+ */
+export function straightenNonOrthogonalFlows(allConnections: any[]): number {
+  let count = 0;
+
+  for (const conn of allConnections) {
+    if (conn.type !== 'bpmn:SequenceFlow') continue;
+
+    const source = conn.source;
+    const target = conn.target;
+    if (!source || !target) continue;
+
+    const sourceRight = source.x + (source.width ?? 0);
+    const targetLeft = target.x;
+
+    // Only forward (left-to-right) connections; skip back-edges and self-loops
+    if (targetLeft <= sourceRight) continue;
+
+    const wps: Array<{ x: number; y: number }> = conn.waypoints;
+    if (!wps || wps.length < 2) continue;
+
+    // Already fully orthogonal — leave it alone
+    if (isFullyOrthogonal(wps)) continue;
+
+    const sourceMidY = source.y + (source.height ?? 0) / 2;
+    const targetMidY = target.y + (target.height ?? 0) / 2;
+    const siblingBounds = getSiblingBounds(conn);
+
+    assignLShapeWaypoints(conn, sourceRight, targetLeft, sourceMidY, targetMidY, siblingBounds);
+    count++;
+  }
+
+  return count;
+}

@@ -31,6 +31,7 @@ import {
 import { handleAutosizePoolsAndLanes } from '../collaboration/autosize-pools-and-lanes';
 import { expandCollapsedSubprocesses } from './expand-subprocesses';
 import { rebuildLayout, applyAllBackEdgeUShapes } from '../../rebuild';
+import { straightenNonOrthogonalFlows } from '../../rebuild/waypoints';
 import { stackPools } from '../../rebuild/container-layout';
 import {
   generateDiagramId,
@@ -77,22 +78,53 @@ export interface LayoutDiagramArgs {
   autosizeOnly?: boolean;
   /** When autosizeOnly is true, scope pool resizing to this participant ID. */
   participantId?: string;
+  /**
+   * When true, apply a post-layout pass that replaces non-orthogonal
+   * (Z-shaped or diagonal) forward sequence-flow waypoints with clean
+   * L-shaped or 2-point straight paths.
+   *
+   * Works in full layout mode (runs after rebuild + connection routing)
+   * and in labelsOnly mode (standalone routing cleanup without moving elements).
+   * Default: false.
+   */
+  straightenFlows?: boolean;
 }
 
 /** Handle labels-only mode: just adjust labels without full layout. */
-async function handleLabelsOnlyMode(diagramId: string): Promise<ToolResult> {
+async function handleLabelsOnlyMode(
+  diagramId: string,
+  opts?: { straightenFlows?: boolean }
+): Promise<ToolResult> {
   const diagram = requireDiagram(diagramId);
   const flowLabelsCentered = await centerFlowLabels(diagram);
   const elementLabelsMoved = await adjustDiagramLabels(diagram);
   const totalMoved = flowLabelsCentered + elementLabelsMoved;
+
+  let straightenedFlowCount = 0;
+  if (opts?.straightenFlows) {
+    const elementRegistry = getService(diagram.modeler, 'elementRegistry');
+    straightenedFlowCount = straightenNonOrthogonalFlows(elementRegistry.getAll());
+    if (straightenedFlowCount > 0) await syncXml(diagram);
+  }
+
   return jsonResult({
     success: true,
     flowLabelsCentered,
     elementLabelsMoved,
     totalMoved,
+    ...(opts?.straightenFlows ? { straightenedFlowCount } : {}),
     message:
-      totalMoved > 0
-        ? `Adjusted ${totalMoved} label(s) to reduce overlap (${elementLabelsMoved} element labels, ${flowLabelsCentered} flow labels centered)`
+      totalMoved > 0 || straightenedFlowCount > 0
+        ? [
+            totalMoved > 0
+              ? `Adjusted ${totalMoved} label(s) to reduce overlap (${elementLabelsMoved} element labels, ${flowLabelsCentered} flow labels centered)`
+              : null,
+            straightenedFlowCount > 0
+              ? `Straightened ${straightenedFlowCount} non-orthogonal flow(s) to L-shape/straight paths`
+              : null,
+          ]
+            .filter(Boolean)
+            .join('. ')
         : 'No label adjustments needed \u2014 all labels are well-positioned',
   });
 }
@@ -274,6 +306,7 @@ function buildLayoutResponse(opts: {
   poolExpansionApplied: boolean;
   subprocessesExpanded: number;
   boundaryEventWarning?: string;
+  straightenedFlowCount?: number;
 }): ToolResult {
   const {
     diagramId,
@@ -288,6 +321,7 @@ function buildLayoutResponse(opts: {
     poolExpansionApplied,
     subprocessesExpanded,
     boundaryEventWarning,
+    straightenedFlowCount,
   } = opts;
 
   const scopeNote = scopeElementId
@@ -300,6 +334,7 @@ function buildLayoutResponse(opts: {
     labelsMoved,
     repositionedCount: result.repositionedCount,
     reroutedCount: result.reroutedCount,
+    ...(straightenedFlowCount ? { straightenedFlowCount } : {}),
     ...(boundaryEventWarning ? { boundaryEventWarning } : {}),
     ...(laneCrossingMetrics
       ? {
@@ -375,6 +410,17 @@ function shouldAutosizePools(args: LayoutDiagramArgs, diagram: any): boolean {
   return args.poolExpansion === true || isCollaboration(registry);
 }
 
+/**
+ * Apply the optional post-layout straightening pass.
+ * Replaces non-orthogonal forward-flow waypoints with clean L-shapes.
+ * Returns the count of straightened connections (added to reroutedCount).
+ */
+function applyPostLayoutStraighten(args: LayoutDiagramArgs, diagram: any): number {
+  if (!args.straightenFlows) return 0;
+  const allElements = getService(diagram.modeler, 'elementRegistry').getAll();
+  return straightenNonOrthogonalFlows(allElements);
+}
+
 export async function handleLayoutDiagram(
   args: LayoutDiagramArgs,
   context?: ToolContext
@@ -387,7 +433,9 @@ export async function handleLayoutDiagram(
     const data = JSON.parse(result.content[0].text as string);
     return jsonResult({ ...data, autosizeOnly: true });
   }
-  if (args.labelsOnly) return handleLabelsOnlyMode(args.diagramId);
+  if (args.labelsOnly) {
+    return handleLabelsOnlyMode(args.diagramId, { straightenFlows: args.straightenFlows });
+  }
   if (args.dryRun) return handleDryRunLayout(args);
 
   const { diagramId, scopeElementId } = args;
@@ -448,6 +496,12 @@ export async function handleLayoutDiagram(
     diagram.pinnedConnections = undefined;
   }
 
+  // Post-layout straightening: replace non-orthogonal forward flows with
+  // clean L-shape / 2-point straight paths after all routing is settled.
+  // Runs before syncXml so the corrected waypoints are captured in diagram.xml.
+  const straightenedFlowCount = applyPostLayoutStraighten(args, diagram);
+  result.reroutedCount += straightenedFlowCount;
+
   await syncXml(diagram);
   resetMutationCounter(diagram);
 
@@ -485,6 +539,7 @@ export async function handleLayoutDiagram(
     poolExpansionApplied,
     subprocessesExpanded,
     boundaryEventWarning,
+    straightenedFlowCount,
   });
 
   return appendLintFeedback(layoutResult, diagram);
