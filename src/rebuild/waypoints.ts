@@ -232,6 +232,9 @@ function detectStaleRouting(
   return false;
 }
 
+/** Minimal typing for the modeling service — avoids importing the full Modeling interface. */
+type ModelingLike = { updateWaypoints(conn: any, wps: any[]): void };
+
 /**
  * Assign a clean L-shaped (orthogonal) waypoint path to the connection.
  * Uses a 2-point straight path for same-Y connections, 4-point L-shape otherwise.
@@ -239,6 +242,12 @@ function detectStaleRouting(
  * When `siblingBounds` is provided, checks whether the L-shape intermediate
  * segments would cross through any sibling element.  If blocked, routes via
  * a U-shape detour that goes above or below the obstructing element(s).
+ *
+ * When `modeling` is provided the waypoints are persisted to the BPMN DI model
+ * via `modeling.updateWaypoints()` (required for correct XML export).  When
+ * omitted the function falls back to direct canvas mutation — acceptable only
+ * for pre-layout calls inside `resetStaleWaypoints` where `modeling.layoutConnection()`
+ * will overwrite the waypoints immediately afterward.
  */
 function assignLShapeWaypoints(
   conn: any,
@@ -246,17 +255,26 @@ function assignLShapeWaypoints(
   targetLeft: number,
   sourceMidY: number,
   targetMidY: number,
-  siblingBounds?: Rect[]
+  siblingBounds?: Rect[],
+  modeling?: ModelingLike | null
 ): void {
+  const applyWaypoints = (wps: any[]) => {
+    if (modeling) {
+      modeling.updateWaypoints(conn, wps);
+    } else {
+      conn.waypoints = wps;
+    }
+  };
+
   const midX = Math.round((sourceRight + targetLeft) / 2);
   if (Math.abs(sourceMidY - targetMidY) <= SAME_Y_TOLERANCE) {
     // Snap both endpoints to a single shared Y so the 2-point path is truly
     // horizontal (not a diagonal caused by different individual midY values).
     const sharedY = Math.round((sourceMidY + targetMidY) / 2);
-    conn.waypoints = [
+    applyWaypoints([
       { x: sourceRight, y: sharedY, original: { x: sourceRight, y: sharedY } },
       { x: targetLeft, y: sharedY, original: { x: targetLeft, y: sharedY } },
-    ];
+    ]);
     return;
   }
 
@@ -281,23 +299,23 @@ function assignLShapeWaypoints(
         Math.abs(detourBelow - avgY) <= Math.abs(detourAbove - avgY) ? detourBelow : detourAbove;
 
       // U-shape: exit source right → go to detourY → traverse to targetLeft → enter target
-      conn.waypoints = [
+      applyWaypoints([
         { x: sourceRight, y: sourceMidY, original: { x: sourceRight, y: sourceMidY } },
         { x: sourceRight, y: detourY },
         { x: targetLeft, y: detourY },
         { x: targetLeft, y: targetMidY, original: { x: targetLeft, y: targetMidY } },
-      ];
+      ]);
       return;
     }
   }
 
   // Standard L-shape (no obstruction)
-  conn.waypoints = [
+  applyWaypoints([
     { x: sourceRight, y: sourceMidY, original: { x: sourceRight, y: sourceMidY } },
     { x: midX, y: sourceMidY },
     { x: midX, y: targetMidY },
     { x: targetLeft, y: targetMidY, original: { x: targetLeft, y: targetMidY } },
-  ];
+  ]);
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -440,12 +458,19 @@ export function isFullyOrthogonal(wps: Array<{ x: number; y: number }>): boolean
  * - MessageFlow and Association connections are skipped.
  * - Already-orthogonal connections are skipped (no-op for clean diagrams).
  *
- * Mutates `conn.waypoints` directly — call `syncXml` afterwards to persist.
+ * When `modeling` is provided, waypoints are persisted to the BPMN DI model via
+ * `modeling.updateWaypoints()` so that `saveXML()` serialises the corrected
+ * orthogonal path.  When omitted, falls back to direct canvas mutation (use only
+ * when a subsequent `syncXml` or `modeling.layoutConnection` will persist the state).
  *
  * @param allConnections  All elements from `elementRegistry.getAll()`.
+ * @param modeling        Optional modeling service for DI-safe waypoint update.
  * @returns Number of connections whose waypoints were replaced.
  */
-export function straightenNonOrthogonalFlows(allConnections: any[]): number {
+export function straightenNonOrthogonalFlows(
+  allConnections: any[],
+  modeling?: ModelingLike | null
+): number {
   let count = 0;
 
   for (const conn of allConnections) {
@@ -471,7 +496,15 @@ export function straightenNonOrthogonalFlows(allConnections: any[]): number {
     const targetMidY = target.y + (target.height ?? 0) / 2;
     const siblingBounds = getSiblingBounds(conn);
 
-    assignLShapeWaypoints(conn, sourceRight, targetLeft, sourceMidY, targetMidY, siblingBounds);
+    assignLShapeWaypoints(
+      conn,
+      sourceRight,
+      targetLeft,
+      sourceMidY,
+      targetMidY,
+      siblingBounds,
+      modeling
+    );
     count++;
   }
 

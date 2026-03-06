@@ -98,7 +98,11 @@ const PROMPTS: PromptDefinition[] = [
             `3. Configure tasks (camunda:assignee, camunda:topic, etc.)\n` +
             `4. \`layout_bpmn_diagram\` to arrange elements — non-orthogonal (Z-shaped) flows are ` +
             `automatically corrected; re-run layout if \`qualityMetrics.orthogonalFlowPercent\` ` +
-            `is still below 90%\n` +
+            `is still below 90%. If the response lists \`nonOrthogonalFlowIds\`, call ` +
+            `\`set_bpmn_connection_waypoints\` for each ID with a 2-point straight path instead ` +
+            `of re-running full layout. Use \`layout_bpmn_diagram\` with \`labelsOnly: true\` ` +
+            `after structural changes to reposition gateway labels onto their flow-free side ` +
+            `without moving other elements.\n` +
             `5. \`validate_bpmn_diagram\` to check for issues\n` +
             `6. Fix any reported issues\n` +
             `7. \`export_bpmn\` with \`filePath\` to save` +
@@ -156,7 +160,12 @@ const PROMPTS: PromptDefinition[] = [
             `2. \`create_bpmn_participant\` (with optional lanes)\n` +
             `3. Build flow using \`batch_bpmn_operations\` (add elements + connect in one call)\n` +
             `4. \`layout_bpmn_diagram\` — non-orthogonal flows are automatically corrected; ` +
-            `re-run if \`qualityMetrics.orthogonalFlowPercent\` < 90% → \`autosize_bpmn_pools_and_lanes\`\n` +
+            `re-run if \`qualityMetrics.orthogonalFlowPercent\` < 90%. If the response lists ` +
+            `\`nonOrthogonalFlowIds\`, call \`set_bpmn_connection_waypoints\` for each ID with ` +
+            `a 2-point straight path instead of re-running full layout. Use ` +
+            `\`layout_bpmn_diagram\` with \`labelsOnly: true\` after structural changes to ` +
+            `reposition gateway labels onto their flow-free side without moving other elements. ` +
+            `→ \`autosize_bpmn_pools_and_lanes\`\n` +
             `5. \`validate_bpmn_diagram\` → fix issues\n` +
             `6. \`export_bpmn\` with \`filePath\` to save` +
             SHARED_EFFICIENCY_GUIDELINES +

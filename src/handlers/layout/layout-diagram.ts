@@ -103,7 +103,8 @@ async function handleLabelsOnlyMode(
   let straightenedFlowCount = 0;
   if (opts?.straightenFlows !== false) {
     const elementRegistry = getService(diagram.modeler, 'elementRegistry');
-    straightenedFlowCount = straightenNonOrthogonalFlows(elementRegistry.getAll());
+    const modeling = getService(diagram.modeler, 'modeling');
+    straightenedFlowCount = straightenNonOrthogonalFlows(elementRegistry.getAll(), modeling);
     if (straightenedFlowCount > 0) await syncXml(diagram);
   }
 
@@ -423,11 +424,13 @@ function shouldAutosizePools(args: LayoutDiagramArgs, diagram: any): boolean {
  * Replaces non-orthogonal forward-flow waypoints with clean L-shapes.
  * Returns the count of straightened connections (added to reroutedCount).
  * Runs by default; pass straightenFlows: false to disable.
+ * Passes the modeling service to ensure DI is synced via updateWaypoints().
  */
 function applyPostLayoutStraighten(args: LayoutDiagramArgs, diagram: any): number {
   if (args.straightenFlows === false) return 0;
   const allElements = getService(diagram.modeler, 'elementRegistry').getAll();
-  return straightenNonOrthogonalFlows(allElements);
+  const modeling = getService(diagram.modeler, 'modeling');
+  return straightenNonOrthogonalFlows(allElements, modeling);
 }
 
 export async function handleLayoutDiagram(
@@ -533,6 +536,11 @@ export async function handleLayoutDiagram(
   if (poolExpansionApplied) {
     const modeling = getService(diagram.modeler, 'modeling');
     result.reroutedCount += applyAllBackEdgeUShapes(elementRegistry, modeling);
+    // Re-run post-layout straightening after pool autosize.
+    // autosizePools re-routes connections via MoveShapeHandler.postExecute which
+    // may produce Z-shaped waypoints on gateway→task flows that were previously
+    // straightened. Running applyPostLayoutStraighten again restores orthogonality.
+    result.reroutedCount += applyPostLayoutStraighten(args, diagram);
   }
 
   const layoutResult = buildLayoutResponse({

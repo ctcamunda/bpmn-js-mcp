@@ -61,6 +61,148 @@ function getDefaultLabelPosition(
   };
 }
 
+/** Classify a waypoint into 'top' | 'bottom' | 'left' | 'right' relative to a gateway centre. */
+function classifyWaypointSide(
+  wp: { x: number; y: number },
+  cx: number,
+  cy: number,
+  dockTol: number
+): string {
+  if (wp.y < cy - dockTol) return 'top';
+  if (wp.y > cy + dockTol) return 'bottom';
+  return wp.x <= cx ? 'left' : 'right';
+}
+
+/**
+ * Determine which sides of a gateway diamond have sequence flow endpoints
+ * docked to them.  Returns a Set of side names ('top' | 'bottom' | 'left' | 'right').
+ *
+ * A flow endpoint is considered "docked" to a side when the relevant waypoint
+ * (first for outgoing, last for incoming) is:
+ *   - top    : waypoint.y  < elementCentreY - DOCK_TOLERANCE
+ *   - bottom : waypoint.y  > elementCentreY + DOCK_TOLERANCE
+ *   - left   : waypoint.x <= elementCentreX (and not top/bottom)
+ *   - right  : waypoint.x >  elementCentreX (and not top/bottom)
+ */
+function getGatewaySidesWithFlows(
+  element: { id?: string; x: number; y: number; width: number; height: number },
+  allElements: any[]
+): Set<string> {
+  const cx = element.x + element.width / 2;
+  const cy = element.y + element.height / 2;
+  const DOCK_TOLERANCE = (element.height / 2) * 0.4; // ~40% of half-height
+  const elementId = (element as any).id;
+
+  const sides = new Set<string>();
+
+  for (const conn of allElements) {
+    if (conn.type !== 'bpmn:SequenceFlow') continue;
+    const wps: Array<{ x: number; y: number }> = conn.waypoints;
+    if (!wps || wps.length < 2) continue;
+
+    if (conn.source?.id === elementId) {
+      sides.add(classifyWaypointSide(wps[0], cx, cy, DOCK_TOLERANCE));
+    }
+    if (conn.target?.id === elementId) {
+      sides.add(classifyWaypointSide(wps[wps.length - 1], cx, cy, DOCK_TOLERANCE));
+    }
+  }
+  return sides;
+}
+
+/** Count shapes whose bounds overlap the given label candidate box. */
+function countShapeOverlaps(
+  cx1: number,
+  cy1: number,
+  cx2: number,
+  cy2: number,
+  shapes: any[]
+): number {
+  let count = 0;
+  for (const s of shapes) {
+    if (s.x === undefined || s.y === undefined || !s.width || !s.height) continue;
+    if (cx1 < s.x + s.width && cx2 > s.x && cy1 < s.y + s.height && cy2 > s.y) count++;
+  }
+  return count;
+}
+
+/**
+ * Compute the best label position for a gateway using four-sided candidate scoring.
+ *
+ * Scores four candidate positions (below / above / left / right) for:
+ *   1. Whether the side has a flow endpoint docked to it (+100 penalty)
+ *   2. How many sibling shapes the label rect overlaps (+1 per overlap)
+ *
+ * Picks the lowest-scoring candidate. Falls back to "below" (bpmn-js default)
+ * when all sides score equally (e.g. a gateway with 4-way flows).
+ */
+function getGatewayLabelPosition(
+  element: { id?: string; x: number; y: number; width: number; height: number },
+  labelWidth: number,
+  labelHeight: number,
+  shapes: any[],
+  allElements: any[]
+): { x: number; y: number } {
+  const midX = element.x + element.width / 2;
+  const midY = element.y + element.height / 2;
+  const bottom = element.y + element.height;
+  const top = element.y;
+  const left = element.x;
+  const right = element.x + element.width;
+
+  // Label vertical padding mirrors bpmn-js getExternalLabelMid formula
+  const vertGap = DEFAULT_LABEL_SIZE.height / 2 - labelHeight / 2;
+
+  const candidates: Array<{ side: string; x: number; y: number }> = [
+    // below (bpmn-js default — preferred when free)
+    {
+      side: 'bottom',
+      x: Math.round(midX - labelWidth / 2),
+      y: Math.round(bottom + vertGap),
+    },
+    // above
+    {
+      side: 'top',
+      x: Math.round(midX - labelWidth / 2),
+      y: Math.round(top - vertGap - labelHeight),
+    },
+    // right of gateway
+    {
+      side: 'right',
+      x: Math.round(right + ELEMENT_LABEL_DISTANCE),
+      y: Math.round(midY - labelHeight / 2),
+    },
+    // left of gateway
+    {
+      side: 'left',
+      x: Math.round(left - ELEMENT_LABEL_DISTANCE - labelWidth),
+      y: Math.round(midY - labelHeight / 2),
+    },
+  ];
+
+  const sidesUsed = getGatewaySidesWithFlows(element, allElements);
+
+  let best = candidates[0];
+  let bestScore = Infinity;
+
+  for (const c of candidates) {
+    let score = 0;
+
+    // Heavy penalty when this side has a flow endpoint docked to it
+    if (sidesUsed.has(c.side)) score += 100;
+
+    // Lighter penalty for overlapping sibling shapes
+    score += countShapeOverlaps(c.x, c.y, c.x + labelWidth, c.y + labelHeight, shapes);
+
+    if (score < bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+
+  return { x: best.x, y: best.y };
+}
+
 /**
  * Compute the best label position for a boundary event.
  *
@@ -177,8 +319,11 @@ export async function adjustDiagramLabels(diagram: DiagramState): Promise<number
 
     let target: { x: number; y: number };
 
-    // Boundary events: use overlap-scored placement (left / right / below)
-    if (el.type === BOUNDARY_EVENT_TYPE && hasBoundaryOutgoingFlows(el.id, allElements)) {
+    // Gateways: use four-sided scoring to avoid placing label on a flow-docked face
+    if (el.type.includes('Gateway')) {
+      target = getGatewayLabelPosition(el, labelWidth, labelHeight, shapes, allElements);
+    } else if (el.type === BOUNDARY_EVENT_TYPE && hasBoundaryOutgoingFlows(el.id, allElements)) {
+      // Boundary events: use overlap-scored placement (left / right / below)
       target = getBoundaryEventLabelPosition(el, labelWidth, labelHeight, shapes);
     } else {
       target = getDefaultLabelPosition(el, labelWidth, labelHeight);
@@ -224,21 +369,25 @@ export async function adjustElementLabel(
 
   let target: { x: number; y: number };
 
-  if (
+  const allVisibleElements = getVisibleElements(elementRegistry);
+  const shapesForEl = allVisibleElements.filter(
+    (s: any) =>
+      s.type !== 'label' &&
+      !String(s.type).includes('Flow') &&
+      !String(s.type).includes('Association') &&
+      s.type !== 'bpmn:Participant' &&
+      s.type !== 'bpmn:Lane' &&
+      s.x !== undefined &&
+      s.width !== undefined
+  );
+
+  if (el.type.includes('Gateway')) {
+    target = getGatewayLabelPosition(el, labelWidth, labelHeight, shapesForEl, allVisibleElements);
+  } else if (
     el.type === BOUNDARY_EVENT_TYPE &&
-    hasBoundaryOutgoingFlows(el.id, getVisibleElements(elementRegistry))
+    hasBoundaryOutgoingFlows(el.id, allVisibleElements)
   ) {
-    const shapes = getVisibleElements(elementRegistry).filter(
-      (s: any) =>
-        s.type !== 'label' &&
-        !String(s.type).includes('Flow') &&
-        !String(s.type).includes('Association') &&
-        s.type !== 'bpmn:Participant' &&
-        s.type !== 'bpmn:Lane' &&
-        s.x !== undefined &&
-        s.width !== undefined
-    );
-    target = getBoundaryEventLabelPosition(el, labelWidth, labelHeight, shapes);
+    target = getBoundaryEventLabelPosition(el, labelWidth, labelHeight, shapesForEl);
   } else {
     target = getDefaultLabelPosition(el, labelWidth, labelHeight);
   }

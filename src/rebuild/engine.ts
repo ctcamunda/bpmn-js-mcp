@@ -39,7 +39,7 @@ import { extractFlowGraph, type FlowGraph } from './topology';
 import { detectBackEdges, topologicalSort } from './graph';
 import { detectGatewayPatterns } from './patterns';
 import { identifyBoundaryEvents } from './boundary';
-import { resetStaleWaypoints, straightenNonOrthogonalFlows } from './waypoints';
+import { resetStaleWaypoints, straightenNonOrthogonalFlows, SAME_Y_TOLERANCE } from './waypoints';
 import {
   buildContainerHierarchy,
   getContainerRebuildOrder,
@@ -510,8 +510,31 @@ function layoutConnections(
           // Fix stale waypoints from intermediate element moves that cause
           // same-level connections to route upward instead of straight
           resetStaleWaypoints(conn);
-          modeling.layoutConnection(conn);
-          deduplicateWaypoints(conn);
+
+          const src = (conn as any).source;
+          const tgt = (conn as any).target;
+          const srcMidY = src ? src.y + (src.height ?? 0) / 2 : NaN;
+          const tgtMidY = tgt ? tgt.y + (tgt.height ?? 0) / 2 : NaN;
+
+          // For gateway→target with near-same centreY, bypass layoutConnection.
+          // ManhattanLayout often generates a Z-shaped path for these pairs even
+          // when resetStaleWaypoints has already set a clean 2-point straight path.
+          // Persisting the straight path via updateWaypoints prevents the Z-shape
+          // from appearing in the exported XML.
+          const isGatewayNearSameY =
+            src?.type?.includes('Gateway') &&
+            !isNaN(srcMidY) &&
+            !isNaN(tgtMidY) &&
+            Math.abs(srcMidY - tgtMidY) <= SAME_Y_TOLERANCE;
+
+          if (isGatewayNearSameY) {
+            // resetStaleWaypoints already set a clean 2-point path on the canvas.
+            // Persist it to the DI model so saveXML() serialises the straight path.
+            modeling.updateWaypoints(conn, (conn as any).waypoints);
+          } else {
+            modeling.layoutConnection(conn);
+            deduplicateWaypoints(conn, modeling);
+          }
           count++;
         } catch {
           // ManhattanLayout throws "unexpected dockingDirection" when waypoints are
@@ -528,7 +551,7 @@ function layoutConnections(
       try {
         resetStaleWaypoints(conn);
         modeling.layoutConnection(conn);
-        deduplicateWaypoints(conn);
+        deduplicateWaypoints(conn, modeling);
         count++;
       } catch {
         // Same docking guard for back-edge (loop) connections.
@@ -540,7 +563,9 @@ function layoutConnections(
   // left non-orthogonal (Z-shaped or diagonal).  This catches edge cases
   // in complex multi-branch graphs where the layout algorithm produces
   // diagonal segments despite the resetStaleWaypoints pre-processing.
-  count += straightenNonOrthogonalFlows(registry.getAll());
+  // Passing `modeling` ensures corrected waypoints are synced to the DI model
+  // so that saveXML() serialises the orthogonal path.
+  count += straightenNonOrthogonalFlows(registry.getAll(), modeling);
 
   return count;
 }
@@ -551,8 +576,11 @@ function layoutConnections(
  * ManhattanLayout occasionally emits pairs like (220,200)→(220,200) when
  * source and target are on the same row.  These zero-length segments are
  * harmless but inflate bend counts and can confuse downstream tools.
+ *
+ * Uses `modeling.updateWaypoints()` to persist the deduplication to the DI
+ * model so that `saveXML()` serialises the cleaned waypoints.
  */
-function deduplicateWaypoints(conn: any): void {
+function deduplicateWaypoints(conn: any, modeling: Modeling): void {
   const wps: any[] = conn.waypoints;
   if (!wps || wps.length < 2) return;
 
@@ -562,7 +590,7 @@ function deduplicateWaypoints(conn: any): void {
   );
 
   if (deduped.length < wps.length) {
-    conn.waypoints = deduped;
+    modeling.updateWaypoints(conn, deduped);
   }
 }
 

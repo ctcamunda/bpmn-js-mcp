@@ -55,6 +55,7 @@ import eventSubprocessMissingTrigger from './rules/event-subprocess-missing-trig
 import emptySubprocess from './rules/empty-subprocess';
 import danglingBoundaryEvent from './rules/dangling-boundary-event';
 import receiveTaskMissingMessage from './rules/receive-task-missing-message';
+import gatewayLabelOverlapsFlow from './rules/gateway-label-overlaps-flow';
 import layoutNeedsAlignment from './rules/layout-needs-alignment';
 import defaultFlowWithCondition from './rules/default-flow-with-condition';
 
@@ -111,6 +112,7 @@ export const rules: Record<string, any> = {
   'empty-subprocess': emptySubprocess,
   'dangling-boundary-event': danglingBoundaryEvent,
   'receive-task-missing-message': receiveTaskMissingMessage,
+  'gateway-label-overlaps-flow': gatewayLabelOverlapsFlow,
   'layout-needs-alignment': layoutNeedsAlignment,
   'default-flow-with-condition': defaultFlowWithCondition,
 };
@@ -163,6 +165,7 @@ export const configs = {
       'bpmn-mcp/empty-subprocess': 'warn',
       'bpmn-mcp/dangling-boundary-event': 'warn',
       'bpmn-mcp/receive-task-missing-message': 'warn',
+      'bpmn-mcp/gateway-label-overlaps-flow': 'warn',
       'bpmn-mcp/layout-needs-alignment': 'warn',
       'bpmn-mcp/default-flow-with-condition': 'warn',
     },
