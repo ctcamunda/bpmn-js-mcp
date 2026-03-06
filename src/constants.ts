@@ -122,9 +122,21 @@ export const POSITION_GRID = 10;
  * Gap (px) between a connection segment and the nearest edge of the flow label box.
  *
  * Used when placing labels perpendicular to their associated segment.
- * Kept small (5px) so labels are visually close to the line they annotate.
+ * Set to 10px to provide enough clearance from the line on vertical segments
+ * of Z-shaped cross-lane connections (the previous value of 5px left almost
+ * no visible gap between the label edge and the connection line).
+ *
+ * **Note — divergence from bpmn-js horizontal equivalence:**
+ *   The former value of 5px coincidentally produced the same label centre Y
+ *   as bpmn-js's `FLOW_LABEL_INDENT = 15` for horizontal segments with a
+ *   20px label height:
+ *     our centre Y = midY − 5 − 10 = midY − 15 = midY − FLOW_LABEL_INDENT  ✓
+ *   With FLOW_LABEL_SIDE_OFFSET = 10 this equivalence no longer holds for
+ *   horizontal segments (our centre Y = midY − 20 vs. bpmn-js midY − 15).
+ *   This is intentional: for Z-shaped cross-lane connections the extra gap
+ *   matters more than pixel-perfect parity with bpmn-js's horizontal offset.
  */
-export const FLOW_LABEL_SIDE_OFFSET = 5;
+export const FLOW_LABEL_SIDE_OFFSET = 10;
 
 /**
  * Flow label indent (px) — matches bpmn-js `FLOW_LABEL_INDENT = 15` from
@@ -135,17 +147,18 @@ export const FLOW_LABEL_SIDE_OFFSET = 5;
  *   - Horizontal: label centre Y = midY − FLOW_LABEL_INDENT
  *   - Vertical:   label centre X = midX + FLOW_LABEL_INDENT
  *
- * **Equivalence for horizontal segments** (default 20 px label height):
- *   Our formula produces:  label centre Y = midY − FLOW_LABEL_SIDE_OFFSET − labelH / 2
- *                                         = midY − 5 − 10 = midY − 15
- *   bpmn-js formula:       label centre Y = midY − FLOW_LABEL_INDENT = midY − 15  ✓
- *   So: FLOW_LABEL_INDENT = FLOW_LABEL_SIDE_OFFSET + DEFAULT_LABEL_SIZE.height / 2.
- *
  * **Vertical segments** (intentional divergence):
  *   bpmn-js centres the label FLOW_LABEL_INDENT px from the segment, meaning
  *   the label *straddles* the segment for a 90 px wide label.  Our
  *   implementation instead places the label's nearest edge FLOW_LABEL_SIDE_OFFSET px
  *   from the segment so the label never overlaps the connection line.
+ *
+ * **Horizontal segments:**
+ *   When FLOW_LABEL_SIDE_OFFSET was 5, our formula coincidentally matched
+ *   bpmn-js:  midY − 5 − labelH/2 = midY − 5 − 10 = midY − 15 = midY − FLOW_LABEL_INDENT.
+ *   With FLOW_LABEL_SIDE_OFFSET = 10 the horizontal centre Y is midY − 20,
+ *   which diverges from bpmn-js by 5px.  FLOW_LABEL_INDENT is kept at 15
+ *   for reference / vertical-segment usage only.
  */
 export const FLOW_LABEL_INDENT = 15;
 

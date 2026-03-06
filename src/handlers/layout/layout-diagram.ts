@@ -46,6 +46,109 @@ import {
 } from './layout-quality-metrics';
 import { computeLaneCrossingMetrics } from './lane-crossing-metrics';
 
+// ── Tolerance (px) for detecting stale association waypoints after layout ──
+const ASSOCIATION_WAYPOINT_TOLERANCE = 20;
+
+/** Check whether a point is within element bounds (+ tolerance). */
+function pointInBounds(
+  pt: { x: number; y: number },
+  el: { x: number; y: number; width?: number; height?: number },
+  tolerance: number
+): boolean {
+  const w = el.width || 0;
+  const h = el.height || 0;
+  return (
+    pt.x >= el.x - tolerance &&
+    pt.x <= el.x + w + tolerance &&
+    pt.y >= el.y - tolerance &&
+    pt.y <= el.y + h + tolerance
+  );
+}
+
+/** Compute a straight 2-point association path using nearest facing edge midpoints. */
+function computeAssocWaypoints(
+  src: { x: number; y: number; width?: number; height?: number },
+  tgt: { x: number; y: number; width?: number; height?: number }
+): [{ x: number; y: number }, { x: number; y: number }] {
+  const srcCx = src.x + (src.width || 0) / 2;
+  const srcCy = src.y + (src.height || 0) / 2;
+  const tgtCx = tgt.x + (tgt.width || 0) / 2;
+  const tgtCy = tgt.y + (tgt.height || 0) / 2;
+  const dx = Math.abs(tgtCx - srcCx);
+  const dy = Math.abs(tgtCy - srcCy);
+  if (dx >= dy) {
+    // Horizontal-dominant: left/right edges
+    return tgtCx >= srcCx
+      ? [
+          { x: Math.round(src.x + (src.width || 0)), y: Math.round(srcCy) },
+          { x: Math.round(tgt.x), y: Math.round(tgtCy) },
+        ]
+      : [
+          { x: Math.round(src.x), y: Math.round(srcCy) },
+          { x: Math.round(tgt.x + (tgt.width || 0)), y: Math.round(tgtCy) },
+        ];
+  }
+  // Vertical-dominant: top/bottom edges
+  return tgtCy >= srcCy
+    ? [
+        { x: Math.round(srcCx), y: Math.round(src.y + (src.height || 0)) },
+        { x: Math.round(tgtCx), y: Math.round(tgt.y) },
+      ]
+    : [
+        { x: Math.round(srcCx), y: Math.round(src.y) },
+        { x: Math.round(tgtCx), y: Math.round(tgt.y + (tgt.height || 0)) },
+      ];
+}
+
+/**
+ * Recompute stale association waypoints after element repositioning.
+ *
+ * `modeling.layoutConnection()` explicitly skips `bpmn:Association`, so
+ * association waypoints created at connection-time remain at their original
+ * coordinates even after layout repositions connected elements.
+ *
+ * For each `bpmn:Association` whose first waypoint is outside the source
+ * element bounds (+ tolerance) or whose last waypoint is outside the target
+ * element bounds (+ tolerance), this function replaces the waypoints with a
+ * clean 2-point path: source-element edge midpoint → target-element edge
+ * midpoint (nearest facing edges).
+ *
+ * @returns Object with count of updated associations and their IDs.
+ */
+function recomputeStaleAssociationWaypoints(
+  elementRegistry: any,
+  modeling: any
+): { count: number; fixedIds: string[] } {
+  const tolerance = ASSOCIATION_WAYPOINT_TOLERANCE;
+  const allElements: any[] = elementRegistry.getAll();
+  const associations = allElements.filter(
+    (el: any) => el.type === 'bpmn:Association' && el.source && el.target && el.waypoints?.length
+  );
+
+  let count = 0;
+  const fixedIds: string[] = [];
+  for (const assoc of associations) {
+    const src = assoc.source;
+    const tgt = assoc.target;
+    const wps: Array<{ x: number; y: number }> = assoc.waypoints;
+    if (
+      pointInBounds(wps[0], src, tolerance) &&
+      pointInBounds(wps[wps.length - 1], tgt, tolerance)
+    ) {
+      continue;
+    }
+    const [p1, p2] = computeAssocWaypoints(src, tgt);
+    try {
+      modeling.updateWaypoints(assoc, [p1, p2]);
+      count++;
+      fixedIds.push(assoc.id as string);
+    } catch {
+      // Non-fatal: association may not support updateWaypoints in all configs
+    }
+  }
+  return { count, fixedIds };
+}
+
 export interface LayoutDiagramArgs {
   diagramId: string;
   /** Optional ID of a Participant or SubProcess to layout in isolation. */
@@ -348,6 +451,51 @@ function buildGatewayFlowFixes(
   return fixes;
 }
 
+/** Build the association stale-waypoint block for the layout response. */
+function buildAssocWaypointsBlock(
+  associationWaypointsFixed: number | undefined,
+  fixedAssociationIds: string[] | undefined
+): Record<string, unknown> {
+  if (!associationWaypointsFixed || associationWaypointsFixed === 0) return {};
+  return {
+    associationWaypointsFixed,
+    ...(fixedAssociationIds && fixedAssociationIds.length > 0 ? { fixedAssociationIds } : {}),
+    associationWarning:
+      `${associationWaypointsFixed} association(s) had stale waypoints that were recomputed: ` +
+      `[${(fixedAssociationIds ?? []).join(', ')}]. ` +
+      `Verify association paths are visually correct; if not, use connect_bpmn_elements ` +
+      `with explicit waypoints to route them manually.`,
+  };
+}
+
+/** Build the laneCrossingMetrics block for the layout response. */
+function buildLaneCrossingBlock(
+  laneCrossingMetrics: ReturnType<typeof computeLaneCrossingMetrics>
+): Record<string, unknown> {
+  if (!laneCrossingMetrics) return {};
+  return {
+    laneCrossingMetrics: {
+      totalLaneFlows: laneCrossingMetrics.totalLaneFlows,
+      crossingLaneFlows: laneCrossingMetrics.crossingLaneFlows,
+      laneCoherenceScore: laneCrossingMetrics.laneCoherenceScore,
+      ...(laneCrossingMetrics.crossingFlowIds
+        ? { crossingFlowIds: laneCrossingMetrics.crossingFlowIds }
+        : {}),
+    },
+  };
+}
+
+/** Apply association waypoint recomputation after layout and return layout-response props. */
+function fixStaleAssocWaypoints(diagram: any): {
+  assocCount: number;
+  assocIds: string[];
+} {
+  const modelingService = getService(diagram.modeler, 'modeling');
+  const registryService = getService(diagram.modeler, 'elementRegistry');
+  const fix = recomputeStaleAssociationWaypoints(registryService, modelingService);
+  return { assocCount: fix.count, assocIds: fix.fixedIds };
+}
+
 /** Build the final JSON response for a layout result. */
 function buildLayoutResponse(opts: {
   diagramId: string;
@@ -364,6 +512,8 @@ function buildLayoutResponse(opts: {
   boundaryEventWarning?: string;
   straightenedFlowCount?: number;
   gatewayFlowFixes?: Array<{ flowId: string; tool: string; args: Record<string, any> }>;
+  associationWaypointsFixed?: number;
+  fixedAssociationIds?: string[];
 }): ToolResult {
   const {
     diagramId,
@@ -380,6 +530,8 @@ function buildLayoutResponse(opts: {
     boundaryEventWarning,
     straightenedFlowCount,
     gatewayFlowFixes,
+    associationWaypointsFixed,
+    fixedAssociationIds,
   } = opts;
 
   const scopeNote = scopeElementId
@@ -393,19 +545,9 @@ function buildLayoutResponse(opts: {
     repositionedCount: result.repositionedCount,
     reroutedCount: result.reroutedCount,
     ...(straightenedFlowCount ? { straightenedFlowCount } : {}),
+    ...buildAssocWaypointsBlock(associationWaypointsFixed, fixedAssociationIds),
     ...(boundaryEventWarning ? { boundaryEventWarning } : {}),
-    ...(laneCrossingMetrics
-      ? {
-          laneCrossingMetrics: {
-            totalLaneFlows: laneCrossingMetrics.totalLaneFlows,
-            crossingLaneFlows: laneCrossingMetrics.crossingLaneFlows,
-            laneCoherenceScore: laneCrossingMetrics.laneCoherenceScore,
-            ...(laneCrossingMetrics.crossingFlowIds
-              ? { crossingFlowIds: laneCrossingMetrics.crossingFlowIds }
-              : {}),
-          },
-        }
-      : {}),
+    ...buildLaneCrossingBlock(laneCrossingMetrics),
     ...(sizingIssues.length > 0 ? { containerSizingIssues: sizingIssues } : {}),
     qualityMetrics,
     ...(qualityMetrics.orthogonalFlowPercent < 90
@@ -556,7 +698,7 @@ export async function handleLayoutDiagram(
   // applyPixelGridSnap is still applied after rebuild to snap Y coordinates
   // (which are not aligned by snapLeft()) and to handle any residual drift
   // from boundary-event and pool-resize operations.
-  if (pixelGridSnap && pixelGridSnap > 0) applyPixelGridSnap(diagram, pixelGridSnap);
+  if (pixelGridSnap) applyPixelGridSnap(diagram, pixelGridSnap);
   deduplicateDiInModeler(diagram);
 
   // DI integrity check + post-layout repair (task 6b):
@@ -576,6 +718,13 @@ export async function handleLayoutDiagram(
   // Runs before syncXml so the corrected waypoints are captured in diagram.xml.
   const straightenedFlowCount = applyPostLayoutStraighten(args, diagram);
   result.reroutedCount += straightenedFlowCount;
+
+  // Recompute stale association waypoints after element repositioning.
+  // modeling.layoutConnection() skips bpmn:Association, so association
+  // waypoints created at connection-time may be far outside their connected
+  // element bounds after layout moves the elements.
+  const { assocCount, assocIds } = fixStaleAssocWaypoints(diagram);
+  result.reroutedCount += assocCount;
 
   await syncXml(diagram);
   resetMutationCounter(diagram);
@@ -612,6 +761,8 @@ export async function handleLayoutDiagram(
       nonOrthIds.length > 0
         ? buildGatewayFlowFixes(diagramId, nonOrthIds, elementRegistry)
         : undefined,
+    associationWaypointsFixed: assocCount,
+    fixedAssociationIds: assocIds,
   });
 
   return appendLintFeedback(layoutResult, diagram);

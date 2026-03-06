@@ -365,22 +365,29 @@ describe('FLOW_LABEL_INDENT parity with bpmn-js for horizontal segments', () => 
    * bpmn-js `FLOW_LABEL_INDENT = 15` places the label **centre** 15 px above
    * the segment midpoint for horizontal connections.
    *
-   * Our `FLOW_LABEL_SIDE_OFFSET = 5` places the label's bottom **edge** 5 px
+   * Our `FLOW_LABEL_SIDE_OFFSET = 10` places the label's bottom **edge** 10 px
    * above the segment.  For the default 20 px label height the resulting
-   * centre Y is identical:
+   * centre Y is:
    *
    *   our centre Y = midY − FLOW_LABEL_SIDE_OFFSET − labelH / 2
-   *                = midY − 5 − 10 = midY − 15
+   *                = midY − 10 − 10 = midY − 20
    *
-   *   bpmn-js formula: midY − FLOW_LABEL_INDENT = midY − 15  ✓
+   * This intentionally diverges from bpmn-js (midY − 15) by 5px to provide
+   * more clearance on vertical segments of Z-shaped cross-lane connections.
    *
-   * This test documents and protects that equivalence.
+   * The former value FLOW_LABEL_SIDE_OFFSET = 5 produced exact bpmn-js parity.
+   * These tests document the current (intentional) divergence.
    */
-  test('FLOW_LABEL_INDENT equals FLOW_LABEL_SIDE_OFFSET + half default label height', () => {
-    expect(FLOW_LABEL_INDENT).toBe(FLOW_LABEL_SIDE_OFFSET + DEFAULT_LABEL_SIZE.height / 2);
+  test('FLOW_LABEL_INDENT does NOT equal FLOW_LABEL_SIDE_OFFSET + half default label height (intentional divergence)', () => {
+    // With FLOW_LABEL_SIDE_OFFSET = 10 and DEFAULT_LABEL_SIZE.height = 20:
+    //   FLOW_LABEL_SIDE_OFFSET + height/2 = 10 + 10 = 20 ≠ FLOW_LABEL_INDENT (15)
+    expect(FLOW_LABEL_INDENT).not.toBe(FLOW_LABEL_SIDE_OFFSET + DEFAULT_LABEL_SIZE.height / 2);
+    // Document the actual relationship:
+    expect(FLOW_LABEL_SIDE_OFFSET + DEFAULT_LABEL_SIZE.height / 2).toBe(20);
+    expect(FLOW_LABEL_INDENT).toBe(15);
   });
 
-  test('horizontal label centre Y matches bpmn-js formula for default label height', () => {
+  test('horizontal label centre Y is 5px further from line than bpmn-js formula (intentional)', () => {
     const midY = 200;
     const labelH = DEFAULT_LABEL_SIZE.height; // 20
 
@@ -391,6 +398,8 @@ describe('FLOW_LABEL_INDENT parity with bpmn-js for horizontal segments', () => 
     // bpmn-js formula (returns centre y directly)
     const bpmnCentreY = midY - FLOW_LABEL_INDENT;
 
-    expect(ourCentreY).toBe(bpmnCentreY);
+    // With FLOW_LABEL_SIDE_OFFSET = 10: our centre Y = midY - 20, bpmn-js = midY - 15
+    // Intentional 5px divergence for better vertical-segment clearance.
+    expect(ourCentreY).toBe(bpmnCentreY - 5);
   });
 });

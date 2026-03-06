@@ -16,6 +16,21 @@ import {
 import { createDiagram, addElement, clearDiagrams, parseResult } from '../../helpers';
 import { getDiagram } from '../../../src/diagram-manager';
 
+/** Check whether point (px, py) is within `bounds` + `tolerance` pixels. */
+function pointWithinBounds(
+  px: number,
+  py: number,
+  el: { x: number; y: number; width: number; height: number },
+  tolerance: number
+): boolean {
+  return (
+    px >= el.x - tolerance &&
+    px <= el.x + el.width + tolerance &&
+    py >= el.y - tolerance &&
+    py <= el.y + el.height + tolerance
+  );
+}
+
 describe('Compensation handler positioning (G2)', () => {
   beforeEach(() => {
     clearDiagrams();
@@ -135,5 +150,116 @@ describe('Compensation handler positioning (G2)', () => {
     const hostBottom = task1El.y + (task1El.height || 80);
     const handlerCy = task2El.y + (task2El.height || 80) / 2;
     expect(handlerCy).toBeGreaterThan(hostBottom);
+  });
+
+  test('association waypoints are within source/target bounds after layout', async () => {
+    // Regression: after layout, association waypoints were not updated
+    // and stayed at stale creation-time coordinates, disconnected from the
+    // repositioned elements.
+    const diagramId = await createDiagram('Association Waypoint Test');
+
+    const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
+    const host = await addElement(diagramId, 'bpmn:ServiceTask', { name: 'Process Payment' });
+    const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End' });
+
+    await handleConnect({ diagramId, sourceElementId: start, targetElementId: host });
+    await handleConnect({ diagramId, sourceElementId: host, targetElementId: end });
+
+    const compBEResult = await handleAddElement({
+      diagramId,
+      elementType: 'bpmn:BoundaryEvent',
+      hostElementId: host,
+      name: 'Compensation',
+    });
+    const compBEId = parseResult(compBEResult).elementId as string;
+
+    await handleSetEventDefinition({
+      diagramId,
+      elementId: compBEId,
+      eventDefinitionType: 'bpmn:CompensateEventDefinition',
+    });
+
+    const handlerResult = await handleAddElement({
+      diagramId,
+      elementType: 'bpmn:Task',
+      name: 'Refund Payment',
+    });
+    const handlerId = parseResult(handlerResult).elementId as string;
+
+    const assocResult = await handleConnect({
+      diagramId,
+      sourceElementId: compBEId,
+      targetElementId: handlerId,
+      connectionType: 'bpmn:Association',
+    });
+    const assocId = parseResult(assocResult).connectionId as string;
+
+    // Run layout — this should fix stale association waypoints
+    await handleLayoutDiagram({ diagramId });
+
+    const reg = getDiagram(diagramId)!.modeler.get('elementRegistry');
+    const assoc = reg.get(assocId);
+    const compBE = reg.get(compBEId);
+    const handler = reg.get(handlerId);
+
+    expect(assoc?.waypoints).toBeDefined();
+    expect(assoc.waypoints.length).toBeGreaterThanOrEqual(2);
+
+    const wps = assoc.waypoints as Array<{ x: number; y: number }>;
+    const first = wps[0];
+    const last = wps[wps.length - 1];
+
+    // First waypoint must be near the source (boundary event) bounds
+    expect(pointWithinBounds(first.x, first.y, compBE, 20)).toBe(true);
+    // Last waypoint must be near the target (handler) bounds
+    expect(pointWithinBounds(last.x, last.y, handler, 20)).toBe(true);
+  });
+
+  test('layout response includes associationWaypointsFixed count when stale waypoints were recomputed', async () => {
+    // Regression: layout response should report how many association waypoints
+    // were recomputed so callers know the diagram had stale edges.
+    const diagramId = await createDiagram('Association Metrics Test');
+
+    const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
+    const host = await addElement(diagramId, 'bpmn:ServiceTask', { name: 'Process Payment' });
+    const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End' });
+
+    await handleConnect({ diagramId, sourceElementId: start, targetElementId: host });
+    await handleConnect({ diagramId, sourceElementId: host, targetElementId: end });
+
+    const compBEResult = await handleAddElement({
+      diagramId,
+      elementType: 'bpmn:BoundaryEvent',
+      hostElementId: host,
+      name: 'Compensation',
+    });
+    const compBEId = parseResult(compBEResult).elementId as string;
+
+    await handleSetEventDefinition({
+      diagramId,
+      elementId: compBEId,
+      eventDefinitionType: 'bpmn:CompensateEventDefinition',
+    });
+
+    const handlerResult = await handleAddElement({
+      diagramId,
+      elementType: 'bpmn:Task',
+      name: 'Refund Payment',
+    });
+    const handlerId = parseResult(handlerResult).elementId as string;
+
+    await handleConnect({
+      diagramId,
+      sourceElementId: compBEId,
+      targetElementId: handlerId,
+      connectionType: 'bpmn:Association',
+    });
+
+    // Run layout — stale association waypoints should be detected and fixed
+    const layoutResult = await handleLayoutDiagram({ diagramId });
+    const resultData = parseResult(layoutResult);
+
+    // The response should report that 1 association had stale waypoints fixed
+    expect(resultData.associationWaypointsFixed).toBeGreaterThan(0);
   });
 });

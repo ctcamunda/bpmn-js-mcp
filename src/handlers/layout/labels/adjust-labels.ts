@@ -37,10 +37,18 @@ function getDefaultLabelPosition(
   labelHeight: number
 ): { x: number; y: number } {
   const midX = element.x + element.width / 2;
-  const midY = element.y + element.height + DEFAULT_LABEL_SIZE.height / 2;
+  // bpmn-js formula: label centre Y = element.bottom + DEFAULT_LABEL_SIZE.height / 2
+  // For the default 20px label height this places the label top at element.bottom (no gap).
+  // Clamp: ensure the label top is at least 0px below element.bottom so that tall
+  // multi-line labels never overlap the element's bottom border.
+  const elementBottom = element.y + element.height;
+  const nominalCentreY = elementBottom + DEFAULT_LABEL_SIZE.height / 2;
+  // Ensure label top (centreY - labelH/2) is at least 0px below element bottom
+  const minCentreY = elementBottom + labelHeight / 2;
+  const centreY = Math.max(nominalCentreY, minCentreY);
   return {
     x: Math.round(midX - labelWidth / 2),
-    y: Math.round(midY - labelHeight / 2),
+    y: Math.round(centreY - labelHeight / 2),
   };
 }
 

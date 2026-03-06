@@ -8,6 +8,7 @@
  */
 
 import type { BpmnElement, ElementRegistry, Modeling } from '../bpmn-types';
+import { buildZShapeRoute } from '../geometry';
 import { resetStaleWaypoints } from './waypoints';
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -301,13 +302,18 @@ function reroutePoolConnections(
  *
  * After `modeling.layoutConnection()` runs, flows between different lanes
  * can produce multi-bend paths that route through unrelated lane content.
- * This function replaces those with cleaner L-shaped paths:
+ * This function replaces those with a clean 4-waypoint Z-shape:
  *
- *   source right-edge → vertical midpoint → target left-edge
+ *   source right-edge → midX (at source Y) → midX (at target Y) → target left-edge
  *
- * The routing prefers a single vertical segment at the X midpoint
- * between source and target, which cleanly traverses the lane boundary
- * without crossing other lanes' elements.
+ * where midX = (source.right + target.left) / 2.  This places the vertical
+ * segment at the midpoint column between source and target, which keeps flow
+ * labels well away from both connected elements (the old L-shape had its only
+ * bend at the target's left edge, pushing labels uncomfortably close to the
+ * target element).
+ *
+ * Delegates to `buildZShapeRoute` from `src/geometry.ts` so the routing
+ * logic is kept in one place.
  *
  * Only applies to forward flows (where target.x > source.x and the
  * source and target are in different lanes).  Back-edges and same-lane
@@ -337,18 +343,16 @@ function routeCrossLaneConnections(
 
     if (!flow.waypoints?.length) continue;
 
-    // Clean L-shaped routing: 3 waypoints (1 bend) for adjacent lanes,
-    // 4 waypoints (2 bends, midX column) for multi-lane vertical drops.
+    // Always use a 4-waypoint Z-shape with the vertical segment at the
+    // midpoint X column between source right edge and target left edge.
+    // This avoids the L-shape's bend landing right at the target's left
+    // edge, which caused flow labels to be positioned too close to the
+    // target element (see TODO: Cross-lane connections routed as L-shape).
     const sy = Math.round(src.y + (src.height || 0) / 2);
     const ty = Math.round(tgt.y + (tgt.height || 0) / 2);
     const rx = src.x + (src.width || 0);
     const lx = tgt.x;
-    const midX = Math.round((rx + lx) / 2);
-    const wp = (x: number, y: number) => ({ x, y });
-    const cleanWaypoints =
-      Math.abs(ty - sy) <= DEFAULT_LANE_HEIGHT
-        ? [wp(rx, sy), wp(lx, sy), wp(lx, ty)]
-        : [wp(rx, sy), wp(midX, sy), wp(midX, ty), wp(lx, ty)];
+    const cleanWaypoints = buildZShapeRoute(rx, sy, lx, ty);
 
     try {
       modeling.updateWaypoints(flow, cleanWaypoints);

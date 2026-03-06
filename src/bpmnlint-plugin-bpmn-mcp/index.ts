@@ -58,6 +58,7 @@ import receiveTaskMissingMessage from './rules/receive-task-missing-message';
 import gatewayLabelOverlapsFlow from './rules/gateway-label-overlaps-flow';
 import layoutNeedsAlignment from './rules/layout-needs-alignment';
 import defaultFlowWithCondition from './rules/default-flow-with-condition';
+import disconnectedAssociationDi from './rules/disconnected-association-di';
 
 /**
  * All custom lint rules keyed by rule name (without plugin prefix).
@@ -115,6 +116,7 @@ export const rules: Record<string, any> = {
   'gateway-label-overlaps-flow': gatewayLabelOverlapsFlow,
   'layout-needs-alignment': layoutNeedsAlignment,
   'default-flow-with-condition': defaultFlowWithCondition,
+  'disconnected-association-di': disconnectedAssociationDi,
 };
 
 export const configs = {
@@ -168,6 +170,7 @@ export const configs = {
       'bpmn-mcp/gateway-label-overlaps-flow': 'warn',
       'bpmn-mcp/layout-needs-alignment': 'warn',
       'bpmn-mcp/default-flow-with-condition': 'warn',
+      'bpmn-mcp/disconnected-association-di': 'warn',
     },
   },
 };

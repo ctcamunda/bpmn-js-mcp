@@ -919,6 +919,38 @@ describe('lane assignment after rebuild (F10 pool with lanes)', () => {
     expect(crossLaneFlow.waypoints!.length).toBeGreaterThanOrEqual(2);
   });
 
+  test('cross-lane connection is routed as Z-shape (4 waypoints, midpoint column is vertical)', async () => {
+    // Regression for: adjacent-lane flows were routed as a 3-waypoint L-shape
+    // with the bend at the target's left edge instead of the midpoint column.
+    // The correct Z-shape has the vertical segment at midX = (src.right + tgt.left) / 2.
+    const ids = await buildF10PoolWithLanes();
+    const diagram = getDiagram(ids.diagramId)!;
+
+    rebuildLayout(diagram);
+
+    const registry = getRegistry(ids.diagramId);
+    const crossLaneFlow = registry.get(ids.crossLaneFlow)!;
+
+    expect(crossLaneFlow.waypoints).toBeDefined();
+    // Z-shape must have exactly 4 waypoints
+    expect(crossLaneFlow.waypoints!.length).toBe(4);
+
+    const [wp0, wp1, wp2, wp3] = crossLaneFlow.waypoints!;
+    // The two middle waypoints share the same X (vertical midpoint column)
+    expect(wp1.x).toBe(wp2.x);
+    // wp0 and wp1 share the same Y (horizontal segment at source height)
+    expect(wp0.y).toBe(wp1.y);
+    // wp2 and wp3 share the same Y (horizontal segment at target height)
+    expect(wp2.y).toBe(wp3.y);
+    // The midpoint X must be strictly between source right edge and target left edge
+    const src = registry.get(ids.placeOrder)!;
+    const tgt = registry.get(ids.processOrder)!;
+    const srcRight = src.x + src.width;
+    const tgtLeft = tgt.x;
+    expect(wp1.x).toBeGreaterThan(srcRight);
+    expect(wp1.x).toBeLessThan(tgtLeft);
+  });
+
   test('lanes are resized to fit within pool bounds', async () => {
     const ids = await buildF10PoolWithLanes();
     const diagram = getDiagram(ids.diagramId)!;

@@ -432,7 +432,14 @@ async function handlePairConnect(args: ConnectArgs): Promise<ToolResult> {
     nextSteps: [
       {
         tool: 'layout_bpmn_diagram',
-        description: 'Auto-arrange after connecting — recommended for multiple connections.',
+        description:
+          connectionType === BPMN_ASSOCIATION_TYPE &&
+          (sourceType === 'bpmn:BoundaryEvent' ||
+            (target.type || target.businessObject?.$type || '') === 'bpmn:BoundaryEvent')
+            ? 'Run layout_bpmn_diagram after creating an association to/from a BoundaryEvent — ' +
+              'association waypoints are frozen at creation time and layout will correct any ' +
+              'stale coordinates once all elements have stable positions.'
+            : 'Auto-arrange after connecting — recommended for multiple connections.',
       },
       ...(sourceType === 'bpmn:ParallelGateway'
         ? [
