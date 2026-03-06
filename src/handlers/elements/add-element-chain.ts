@@ -320,11 +320,13 @@ export async function handleAddElementChain(args: AddElementChainArgs): Promise<
       'Use connect_bpmn_elements ONLY for new branch flows originating FROM the gateway. ' +
       'Mark exactly one outgoing branch as the default with isDefault: true in connect_bpmn_elements, ' +
       'and add conditionExpression to all other branches. ' +
+      (unconditionedFlowIds && unconditionedFlowIds.length > 0
+        ? `These flow IDs already exist but have NO conditionExpression and are NOT marked as default — ` +
+          `call set_bpmn_element_properties on each: [${unconditionedFlowIds.join(', ')}]. `
+        : '') +
       'Then run layout_bpmn_diagram after all branches are wired.' +
       (unconnectedElements.length > 0
-        ? ' Unconnected element IDs: ' +
-          unconnectedElements.map((e) => e.elementId).join(', ') +
-          '.'
+        ? ` Unconnected element IDs: ${unconnectedElements.map((e) => e.elementId).join(', ')}.`
         : '')
     : undefined;
 

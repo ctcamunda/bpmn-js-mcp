@@ -306,6 +306,48 @@ function buildOrthogonalityWarning(
   );
 }
 
+/**
+ * For each non-orthogonal flow whose source is a gateway, compute concrete
+ * set_bpmn_connection_waypoints fix hints with 2-point straight waypoints.
+ *
+ * Returns an array of fix objects (empty when no gateway-sourced non-orthogonal flows exist).
+ */
+function buildGatewayFlowFixes(
+  diagramId: string,
+  nonOrthogonalFlowIds: string[],
+  elementRegistry: any
+): Array<{ flowId: string; tool: string; args: Record<string, any> }> {
+  const fixes: Array<{ flowId: string; tool: string; args: Record<string, any> }> = [];
+
+  for (const flowId of nonOrthogonalFlowIds) {
+    const conn = elementRegistry.get(flowId);
+    if (!conn || !conn.waypoints || conn.waypoints.length < 2) continue;
+
+    // Only emit fixes for gateway-sourced flows
+    const sourceType: string = conn.source?.type ?? '';
+    if (!sourceType.includes('Gateway')) continue;
+
+    const wps: Array<{ x: number; y: number }> = conn.waypoints;
+    const first = wps[0];
+    const last = wps[wps.length - 1];
+
+    fixes.push({
+      flowId,
+      tool: 'set_bpmn_connection_waypoints',
+      args: {
+        diagramId,
+        connectionId: flowId,
+        waypoints: [
+          { x: Math.round(first.x), y: Math.round(first.y) },
+          { x: Math.round(last.x), y: Math.round(last.y) },
+        ],
+      },
+    });
+  }
+
+  return fixes;
+}
+
 /** Build the final JSON response for a layout result. */
 function buildLayoutResponse(opts: {
   diagramId: string;
@@ -321,6 +363,7 @@ function buildLayoutResponse(opts: {
   subprocessesExpanded: number;
   boundaryEventWarning?: string;
   straightenedFlowCount?: number;
+  gatewayFlowFixes?: Array<{ flowId: string; tool: string; args: Record<string, any> }>;
 }): ToolResult {
   const {
     diagramId,
@@ -336,6 +379,7 @@ function buildLayoutResponse(opts: {
     subprocessesExpanded,
     boundaryEventWarning,
     straightenedFlowCount,
+    gatewayFlowFixes,
   } = opts;
 
   const scopeNote = scopeElementId
@@ -367,6 +411,7 @@ function buildLayoutResponse(opts: {
     ...(qualityMetrics.orthogonalFlowPercent < 90
       ? { warning: buildOrthogonalityWarning(qualityMetrics) }
       : {}),
+    ...(gatewayFlowFixes && gatewayFlowFixes.length > 0 ? { gatewayFlowFixes } : {}),
     message:
       `Rebuild layout applied to diagram ${diagramId}` +
       `${scopeElementId ? ` (scoped to ${scopeElementId})` : ''}` +
@@ -433,6 +478,35 @@ function applyPostLayoutStraighten(args: LayoutDiagramArgs, diagram: any): numbe
   return straightenNonOrthogonalFlows(allElements, modeling);
 }
 
+/** Compute boundary-event warning text (or undefined when none present). */
+function computeBoundaryWarning(elementRegistry: any): string | undefined {
+  const count = elementRegistry
+    .getAll()
+    .filter((el: any) => el.type === 'bpmn:BoundaryEvent').length;
+  if (count === 0) return undefined;
+  return (
+    `\u26a0 This diagram has ${count} boundary event(s). ` +
+    `Full layout repositions them relative to their host tasks — verify positions after layout. ` +
+    `Use labelsOnly: true for label-only cleanup, or scopeElementId to scope layout to one participant.`
+  );
+}
+
+/**
+ * Re-route U-shaped back-edges and re-straighten flows after pool autosize.
+ * Pool autosize re-routes connections via MoveShapeHandler.postExecute which
+ * can produce Z-shaped waypoints; this pass restores orthogonality.
+ */
+function applyPoolExpansionReRouting(
+  args: LayoutDiagramArgs,
+  diagram: any,
+  elementRegistry: any,
+  result: any
+): void {
+  const modeling = getService(diagram.modeler, 'modeling');
+  result.reroutedCount += applyAllBackEdgeUShapes(elementRegistry, modeling);
+  result.reroutedCount += applyPostLayoutStraighten(args, diagram);
+}
+
 export async function handleLayoutDiagram(
   args: LayoutDiagramArgs,
   context?: ToolContext
@@ -459,20 +533,9 @@ export async function handleLayoutDiagram(
   await progress?.(0, 100, 'Preparing layout…');
   const subprocessesExpanded = args.expandSubprocesses ? expandCollapsedSubprocesses(diagram) : 0;
   const preRepairs = repairMissingDiShapes(diagram);
-
-  // Warn when the diagram contains boundary events (issue #16).
-  // Full layout may reposition them incorrectly until issues #11 and #14
-  // are fully resolved.  This gives users an actionable alternative.
-  const boundaryEventRegistry = getService(diagram.modeler, 'elementRegistry');
-  const boundaryEventCount = boundaryEventRegistry
-    .getAll()
-    .filter((el: any) => el.type === 'bpmn:BoundaryEvent').length;
-  const boundaryEventWarning =
-    boundaryEventCount > 0
-      ? `\u26a0 This diagram has ${boundaryEventCount} boundary event(s). ` +
-        `Full layout repositions them relative to their host tasks — verify positions after layout. ` +
-        `Use labelsOnly: true for label-only cleanup, or scopeElementId to scope layout to one participant.`
-      : undefined;
+  const boundaryEventWarning = computeBoundaryWarning(
+    getService(diagram.modeler, 'elementRegistry')
+  );
 
   // Determine whether pool autosize will run after layout (task 7b):
   // when poolExpansion is enabled (or auto-detected), `handleAutosizePoolsAndLanes`
@@ -525,23 +588,11 @@ export async function handleLayoutDiagram(
   await progress?.(85, 100, 'Resizing pools…');
   const poolExpansionApplied = await autosizePools(args, diagram, elementRegistry);
 
-  // Re-apply U-shaped back-edge routing after pool autosize.
-  //
-  // bpmn-js's MoveShapeHandler.postExecute re-routes all connections attached
-  // to moved elements via modeling.layoutConnection() whenever elements are
-  // repositioned (e.g. by centerElementsInLanes inside handleAutosizePoolsAndLanes).
-  // This overwrites the U-shaped 4-waypoint routing applied inside rebuildLayout().
-  // Running applyAllBackEdgeUShapes() again as the very last step ensures the
-  // deterministic U-shape is the final routing for all loop-back connections.
-  if (poolExpansionApplied) {
-    const modeling = getService(diagram.modeler, 'modeling');
-    result.reroutedCount += applyAllBackEdgeUShapes(elementRegistry, modeling);
-    // Re-run post-layout straightening after pool autosize.
-    // autosizePools re-routes connections via MoveShapeHandler.postExecute which
-    // may produce Z-shaped waypoints on gateway→task flows that were previously
-    // straightened. Running applyPostLayoutStraighten again restores orthogonality.
-    result.reroutedCount += applyPostLayoutStraighten(args, diagram);
-  }
+  // Re-apply U-shaped back-edge routing and re-straighten flows after pool autosize.
+  if (poolExpansionApplied) applyPoolExpansionReRouting(args, diagram, elementRegistry, result);
+
+  const finalQualityMetrics = computeLayoutQualityMetrics(elementRegistry);
+  const nonOrthIds = finalQualityMetrics.nonOrthogonalFlowIds ?? [];
 
   const layoutResult = buildLayoutResponse({
     diagramId,
@@ -551,12 +602,16 @@ export async function handleLayoutDiagram(
     result,
     laneCrossingMetrics: computeLaneCrossingMetrics(elementRegistry),
     sizingIssues: detectContainerSizingIssues(elementRegistry),
-    qualityMetrics: computeLayoutQualityMetrics(elementRegistry),
+    qualityMetrics: finalQualityMetrics,
     diWarnings: [...allRepairs, ...checkDiIntegrity(diagram, elementRegistry)],
     poolExpansionApplied,
     subprocessesExpanded,
     boundaryEventWarning,
     straightenedFlowCount,
+    gatewayFlowFixes:
+      nonOrthIds.length > 0
+        ? buildGatewayFlowFixes(diagramId, nonOrthIds, elementRegistry)
+        : undefined,
   });
 
   return appendLintFeedback(layoutResult, diagram);

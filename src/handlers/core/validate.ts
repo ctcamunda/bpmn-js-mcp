@@ -16,6 +16,8 @@ import { requireDiagram, jsonResult, validateArgs } from '../helpers';
 import { lintDiagramFlat, getEffectiveConfig } from '../../linter';
 import { suggestFix } from '../../lint-suggestions';
 import type { FlatLintIssue, LintConfig } from '../../bpmnlint-types';
+import { computeLayoutQualityMetrics } from '../layout/layout-quality-metrics';
+import { getService } from '../../bpmn-types';
 
 export interface ValidateArgs {
   diagramId: string;
@@ -204,6 +206,10 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
     args: { properties: { 'camunda:candidateGroups': '<lane-matching-group>' } },
     requiresElementId: true,
   },
+  'bpmn-mcp/layout-needs-alignment': {
+    tool: 'layout_bpmn_diagram',
+    args: {},
+  },
 };
 
 /**
@@ -213,7 +219,7 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
 function suggestFixToolCall(
   issue: FlatLintIssue,
   diagramId: string
-): { tool: string; args: Record<string, any> } | undefined {
+): { tool: string; args: Record<string, any>; hint?: string } | undefined {
   const { rule, elementId } = issue;
   if (!rule) return undefined;
 
@@ -255,10 +261,38 @@ export async function handleValidate(args: ValidateArgs): Promise<ToolResult> {
     // If bpmnlint fails, return empty issues gracefully
   }
 
+  // Pre-compute non-orthogonal flow IDs for layout-needs-alignment enrichment
+  let nonOrthogonalFlowIds: string[] | undefined;
+  const hasLayoutIssue = lintIssues.some((i) => i.rule === 'bpmn-mcp/layout-needs-alignment');
+  if (hasLayoutIssue) {
+    try {
+      const elementRegistry = getService(diagram.modeler, 'elementRegistry');
+      const qm = computeLayoutQualityMetrics(elementRegistry);
+      if (qm.nonOrthogonalFlowIds && qm.nonOrthogonalFlowIds.length > 0) {
+        nonOrthogonalFlowIds = qm.nonOrthogonalFlowIds;
+      }
+    } catch {
+      // Not critical — proceed without enrichment
+    }
+  }
+
   // Convert bpmnlint issues to our format, including docUrl and fix suggestions
   const issues: ValidationIssue[] = lintIssues.map((li) => {
     const fix = suggestFix(li, args.diagramId);
-    const fixToolCall = suggestFixToolCall(li, args.diagramId);
+    let fixToolCall = suggestFixToolCall(li, args.diagramId);
+
+    // Enrich layout-needs-alignment fix with specific non-orthogonal flow IDs
+    if (li.rule === 'bpmn-mcp/layout-needs-alignment' && fixToolCall && nonOrthogonalFlowIds) {
+      fixToolCall = {
+        ...fixToolCall,
+        args: { ...fixToolCall.args, nonOrthogonalFlowIds },
+        hint:
+          `${nonOrthogonalFlowIds.length} non-orthogonal flow(s) detected: [${nonOrthogonalFlowIds.join(', ')}]. ` +
+          `Use set_bpmn_connection_waypoints on each to snap it to a straight 2-point path, ` +
+          `or run layout_bpmn_diagram to re-arrange all elements.`,
+      };
+    }
+
     return {
       severity: li.severity,
       message: li.message,
