@@ -1,10 +1,20 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { handleExportBpmn } from '../../../src/handlers';
 import { createDiagram, addElement, clearDiagrams, connect } from '../../helpers';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 describe('export_bpmn', () => {
+  let tmpDir: string;
+
   beforeEach(() => {
     clearDiagrams();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bpmn-export-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   // ── XML format ──────────────────────────────────────────────────────────
@@ -19,6 +29,47 @@ describe('export_bpmn', () => {
     const diagramId = await createDiagram();
     const res = await handleExportBpmn({ diagramId, format: 'svg', skipLint: true });
     expect(res.content[0].text).toContain('<svg');
+  });
+
+  // ── filePath: XML suppression ───────────────────────────────────────────
+
+  test('writes XML to file and omits it from response when filePath provided', async () => {
+    const diagramId = await createDiagram();
+    const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start', x: 100, y: 100 });
+    const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End', x: 300, y: 100 });
+    await connect(diagramId, start, end);
+
+    const filePath = path.join(tmpDir, 'out.bpmn');
+    const res = await handleExportBpmn({ diagramId, format: 'xml', filePath });
+
+    // XML must be on disk
+    const written = fs.readFileSync(filePath, 'utf-8');
+    expect(written).toContain('<bpmn:definitions');
+
+    // XML must NOT be in the response content
+    const allText = res.content.map((c: any) => c.text).join('\n');
+    expect(allText).not.toContain('<bpmn:definitions');
+    expect(allText).toContain(filePath);
+  });
+
+  test('format both with filePath: writes XML to file, returns SVG in response', async () => {
+    const diagramId = await createDiagram();
+    const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start', x: 100, y: 100 });
+    const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End', x: 300, y: 100 });
+    await connect(diagramId, start, end);
+
+    const filePath = path.join(tmpDir, 'out.bpmn');
+    const res = await handleExportBpmn({ diagramId, format: 'both', filePath });
+
+    // XML on disk
+    const written = fs.readFileSync(filePath, 'utf-8');
+    expect(written).toContain('<bpmn:definitions');
+
+    // SVG still in response
+    const allText = res.content.map((c: any) => c.text).join('\n');
+    expect(allText).toContain('<svg');
+    // XML not in response
+    expect(allText).not.toContain('<bpmn:definitions');
   });
 
   // ── Connectivity warnings ───────────────────────────────────────────────

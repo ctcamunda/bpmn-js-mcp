@@ -16,11 +16,30 @@ import {
   getService,
 } from '../helpers';
 
+export interface ResolvedFlow {
+  id: string;
+  label: string | null;
+  sourceId: string;
+  sourceName: string;
+  sourceType: string;
+  targetId: string;
+  targetName: string;
+  targetType: string;
+}
+
 export interface ListElementsArgs {
   diagramId: string;
   namePattern?: string;
   elementType?: string;
   property?: { key: string; value?: string };
+  /**
+   * When true, replaces opaque `incoming`/`outgoing` flow ID arrays with
+   * resolved `incomingFlows`/`outgoingFlows` objects containing the flow
+   * label and both endpoint IDs/names/types. Non-flow infrastructure
+   * elements (Lane, DataObject, DataStore, Process, Participant labels)
+   * are excluded from the result unless `elementType` is also set.
+   */
+  topology?: boolean;
 }
 
 /** Extract camunda:* attributes from a business object, if any. */
@@ -32,6 +51,38 @@ function extractCamundaAttrs(bo: any): Record<string, any> | undefined {
   }
   if (Object.keys(attrs).length === 0) return undefined;
   return attrs;
+}
+
+/**
+ * Element types that are infrastructure / containers, not process flow nodes.
+ * Excluded from topology view unless the caller sets an explicit elementType filter.
+ */
+const TOPOLOGY_EXCLUDED_TYPES = new Set([
+  'bpmn:Lane',
+  'bpmn:LaneSet',
+  'bpmn:Process',
+  'bpmn:Collaboration',
+  'bpmn:DataObjectReference',
+  'bpmn:DataObject',
+  'bpmn:DataStoreReference',
+  'bpmn:TextAnnotation',
+  'bpmn:Group',
+  'label',
+]);
+
+/** Resolve a connection element to a ResolvedFlow descriptor. */
+function resolveFlow(conn: any): ResolvedFlow {
+  const bo = conn.businessObject;
+  return {
+    id: conn.id,
+    label: bo?.name || null,
+    sourceId: conn.source?.id ?? bo?.sourceRef?.id ?? '',
+    sourceName: conn.source?.businessObject?.name || conn.source?.id || '',
+    sourceType: conn.source?.type ?? '',
+    targetId: conn.target?.id ?? bo?.targetRef?.id ?? '',
+    targetName: conn.target?.businessObject?.name || conn.target?.id || '',
+    targetType: conn.target?.type ?? '',
+  };
 }
 
 /** Convert a registry element to a serialisable list entry. */
@@ -53,6 +104,7 @@ function mapElementToEntry(el: any): Record<string, any> {
 
   if (el.incoming?.length) entry.incoming = el.incoming.map((c: any) => c.id);
   if (el.outgoing?.length) entry.outgoing = el.outgoing.map((c: any) => c.id);
+  // topology-resolved variants are added by mapElementToEntryTopology
 
   if (el.source) entry.sourceId = el.source.id;
   if (el.target) entry.targetId = el.target.id;
@@ -62,6 +114,40 @@ function mapElementToEntry(el: any): Record<string, any> {
 
   const camundaAttrs = extractCamundaAttrs(el.businessObject);
   if (camundaAttrs) entry.camundaProperties = camundaAttrs;
+
+  return entry;
+}
+
+/** Convert a registry element to a topology-resolved entry (resolved flows, no coordinates). */
+function mapElementToEntryTopology(el: any): Record<string, any> {
+  const entry: Record<string, any> = {
+    id: el.id,
+    type: el.type,
+    name: el.businessObject?.name || '(unnamed)',
+  };
+
+  if (el.type === 'bpmn:BoundaryEvent') {
+    const hostId = el.host?.id || el.businessObject?.attachedToRef?.id;
+    if (hostId) entry.attachedToRef = hostId;
+  }
+
+  // Resolved incoming connections (sequence flows into this element)
+  if (el.incoming?.length) {
+    entry.incomingFlows = el.incoming
+      .filter((c: any) => c.type === 'bpmn:SequenceFlow' || c.type === 'bpmn:MessageFlow')
+      .map(resolveFlow);
+  } else {
+    entry.incomingFlows = [];
+  }
+
+  // Resolved outgoing connections (sequence flows out of this element)
+  if (el.outgoing?.length) {
+    entry.outgoingFlows = el.outgoing
+      .filter((c: any) => c.type === 'bpmn:SequenceFlow' || c.type === 'bpmn:MessageFlow')
+      .map(resolveFlow);
+  } else {
+    entry.outgoingFlows = [];
+  }
 
   return entry;
 }
@@ -88,13 +174,24 @@ function filterByProperty(elements: any[], property: { key: string; value?: stri
 
 export async function handleListElements(args: ListElementsArgs): Promise<ToolResult> {
   validateArgs(args, ['diagramId']);
-  const { diagramId, namePattern, elementType, property } = args;
+  const { diagramId, namePattern, elementType, property, topology } = args;
   const diagram = requireDiagram(diagramId);
 
   const elementRegistry = getService(diagram.modeler, 'elementRegistry');
   let elements = getVisibleElements(elementRegistry);
 
   const hasFilters = !!(namePattern || elementType || property);
+
+  // In topology mode, exclude infrastructure/container elements unless the
+  // caller explicitly sets an elementType filter.
+  if (topology && !elementType) {
+    elements = elements.filter((el: any) => !TOPOLOGY_EXCLUDED_TYPES.has(el.type));
+    // Also exclude bare sequence flow / message flow elements — they appear
+    // inline on the source/target nodes via incomingFlows/outgoingFlows.
+    elements = elements.filter(
+      (el: any) => el.type !== 'bpmn:SequenceFlow' && el.type !== 'bpmn:MessageFlow'
+    );
+  }
 
   // Filter by element type
   if (elementType) {
@@ -112,18 +209,21 @@ export async function handleListElements(args: ListElementsArgs): Promise<ToolRe
     elements = filterByProperty(elements, property);
   }
 
-  const elementList = elements.map(mapElementToEntry);
+  const elementList = topology
+    ? elements.map(mapElementToEntryTopology)
+    : elements.map(mapElementToEntry);
 
   return jsonResult({
     success: true,
     elements: elementList,
     count: elementList.length,
-    ...(hasFilters
+    ...(hasFilters || topology
       ? {
           filters: {
             ...(namePattern ? { namePattern } : {}),
             ...(elementType ? { elementType } : {}),
             ...(property ? { property } : {}),
+            ...(topology ? { topology } : {}),
           },
         }
       : {}),
@@ -133,11 +233,23 @@ export async function handleListElements(args: ListElementsArgs): Promise<ToolRe
 export const TOOL_DEFINITION = {
   name: 'list_bpmn_elements',
   description:
-    'List elements in a BPMN diagram with their types, names, positions, connections, and properties. Supports optional filters to search by name pattern, element type, or property value. When no filters are given, returns all elements.',
+    'List elements in a BPMN diagram. By default returns all elements with types, names, positions, and opaque flow ID arrays. ' +
+    'Set topology: true for a connectivity summary: each element gets resolved incomingFlows/outgoingFlows arrays with ' +
+    'flow labels, source/target IDs, names, and types — use this to understand process topology in one call without parsing XML. ' +
+    'Supports optional filters to search by name pattern, element type, or property value.',
   inputSchema: {
     type: 'object',
     properties: {
       diagramId: { type: 'string', description: 'The diagram ID' },
+      topology: {
+        type: 'boolean',
+        description:
+          'When true, returns a connectivity summary: each element includes resolved ' +
+          'incomingFlows and outgoingFlows arrays with { id, label, sourceId, sourceName, ' +
+          'sourceType, targetId, targetName, targetType }. Infrastructure elements ' +
+          '(lanes, data objects, annotations) are excluded. Use this to understand ' +
+          'process flow and gateway branching in a single call.',
+      },
       namePattern: {
         type: 'string',
         description:

@@ -40,32 +40,89 @@ const { version: PKG_VERSION } = require('../package.json') as { version: string
 
 // ── CLI argument parsing ───────────────────────────────────────────────────
 
+/**
+ * Named tool groups for use with --enable-tools / --disable-tools.
+ * Group names expand to the listed tool names.
+ */
+const TOOL_GROUPS: Record<string, string[]> = {
+  batch: ['batch_bpmn_operations'],
+  history: ['bpmn_history'],
+  layout: ['layout_bpmn_diagram', 'align_bpmn_elements'],
+  collaboration: [
+    'create_bpmn_participant',
+    'create_bpmn_lanes',
+    'assign_bpmn_elements_to_lane',
+    'analyze_bpmn_lanes',
+    'manage_bpmn_root_elements',
+  ],
+  /** All seven Camunda-specific property setters. */
+  camunda: [
+    'set_bpmn_input_output_mapping',
+    'set_bpmn_event_definition',
+    'set_bpmn_form_data',
+    'set_bpmn_loop_characteristics',
+    'set_bpmn_camunda_listeners',
+    'set_bpmn_call_activity_variables',
+  ],
+  /** Higher-level analysis / read-only tools (safe to hide for simple use-cases). */
+  analysis: [
+    'validate_bpmn_diagram',
+    'analyze_bpmn_lanes',
+    'list_bpmn_process_variables',
+  ],
+};
+
+/** Expand a comma-separated list of tool names / group names to individual tool names. */
+function expandToolList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .flatMap((token) => TOOL_GROUPS[token] ?? [token]);
+}
+
 interface CliOptions {
   persistDir?: string;
   hintLevel?: HintLevel;
+  /** Whitelist: only expose these tools (comma-separated names or group aliases). */
+  enableTools?: string[];
+  /** Blacklist: hide these tools (comma-separated names or group aliases). */
+  disableTools?: string[];
 }
 
 function printUsage(): void {
+  const groupList = Object.entries(TOOL_GROUPS)
+    .map(([name, tools]) => `    ${name.padEnd(15)} ${tools.join(', ')}`)
+    .join('\n');
   console.error(`Usage: bpmn-js-mcp [options]
 
 Options:
-  --persist-dir <dir>   Enable file-backed diagram persistence in <dir>.
-                        Diagrams are saved as .bpmn files and restored on startup.
-  --hint-level <level>  Set server-wide feedback verbosity. Values: full (default),
-                        minimal (lint errors only), none (no implicit feedback).
-  --help                Show this help message and exit.
+  --persist-dir <dir>         Enable file-backed diagram persistence in <dir>.
+                              Diagrams are saved as .bpmn files and restored on startup.
+  --hint-level <level>        Set server-wide feedback verbosity. Values: full (default),
+                              minimal (lint errors only), none (no implicit feedback).
+  --enable-tools <list>       Whitelist: expose ONLY these tools (comma-separated).
+                              Mutually exclusive with --disable-tools.
+  --disable-tools <list>      Blacklist: hide these tools (comma-separated).
+                              Mutually exclusive with --enable-tools.
+  --help                      Show this help message and exit.
+
+Tool group aliases (usable in --enable-tools / --disable-tools):
+${groupList}
 
 Examples:
   bpmn-js-mcp
   bpmn-js-mcp --persist-dir ./diagrams
   bpmn-js-mcp --hint-level minimal
+  bpmn-js-mcp --disable-tools batch,history
+  bpmn-js-mcp --enable-tools create_bpmn_diagram,add_bpmn_element,connect_bpmn_elements,export_bpmn
 
 MCP configuration (.vscode/mcp.json):
   {
     "servers": {
       "bpmn": {
         "command": "npx",
-        "args": ["bpmn-js-mcp", "--persist-dir", "./diagrams", "--hint-level", "minimal"]
+        "args": ["bpmn-js-mcp", "--disable-tools", "batch,history", "--hint-level", "minimal"]
       }
     }
   }
@@ -96,6 +153,24 @@ function parseArgs(argv: string[]): CliOptions {
         options.hintLevel = level as HintLevel;
         break;
       }
+      case '--enable-tools': {
+        const list = args[++i];
+        if (!list) {
+          console.error('Error: --enable-tools requires a comma-separated list of tool names');
+          process.exit(1);
+        }
+        options.enableTools = expandToolList(list);
+        break;
+      }
+      case '--disable-tools': {
+        const list = args[++i];
+        if (!list) {
+          console.error('Error: --disable-tools requires a comma-separated list of tool names');
+          process.exit(1);
+        }
+        options.disableTools = expandToolList(list);
+        break;
+      }
       case '--help':
       case '-h':
         printUsage();
@@ -108,12 +183,23 @@ function parseArgs(argv: string[]): CliOptions {
     }
   }
 
+  if (options.enableTools && options.disableTools) {
+    console.error('Error: --enable-tools and --disable-tools are mutually exclusive');
+    process.exit(1);
+  }
+
   return options;
 }
 
 // ── Registered tool modules ────────────────────────────────────────────────
 // Add new editor modules here (e.g. dmnModule, formModule) when available.
 const modules: ToolModule[] = [bpmnModule];
+
+/**
+ * Active tool filter — set by main() from CLI options before the server
+ * starts accepting connections.  null means all tools are allowed.
+ */
+let allowedTools: Set<string> | null = null;
 
 const server = new Server(
   { name: 'bpmn-js-mcp', version: PKG_VERSION },
@@ -123,11 +209,17 @@ const server = new Server(
 // ── Tool handlers ──────────────────────────────────────────────────────────
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: modules.flatMap((m) => m.toolDefinitions),
+  tools: modules
+    .flatMap((m) => m.toolDefinitions)
+    .filter((td) => allowedTools === null || allowedTools.has(td.name as string)),
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const { name, arguments: args } = request.params;
+
+  if (allowedTools !== null && !allowedTools.has(name)) {
+    throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
+  }
 
   // Build a ToolContext with progress notification capability when the
   // client supplied a progressToken in the request's _meta.
@@ -187,6 +279,17 @@ async function main() {
   if (options.hintLevel) {
     setServerHintLevel(options.hintLevel);
     console.error(`Hint level set to: ${options.hintLevel}`);
+  }
+
+  // Compute tool allowlist from --enable-tools / --disable-tools
+  if (options.enableTools) {
+    allowedTools = new Set(options.enableTools);
+    console.error(`Tool filter (whitelist): ${[...allowedTools].join(', ')}`);
+  } else if (options.disableTools) {
+    const allTools = modules.flatMap((m) => m.toolDefinitions).map((td) => td.name as string);
+    const disabled = new Set(options.disableTools);
+    allowedTools = new Set(allTools.filter((name) => !disabled.has(name)));
+    console.error(`Tool filter (disabled): ${[...disabled].join(', ')}`);
   }
 
   // Enable file-backed persistence if requested

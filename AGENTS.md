@@ -96,6 +96,14 @@ npm test           # vitest run
 
 **Bundling:** esbuild bundles all source + `@modelcontextprotocol/sdk` + `camunda-bpmn-moddle` into one CJS file. `jsdom`, `bpmn-js`, `bpmn-auto-layout`, `bpmnlint`, and `bpmnlint-plugin-camunda-compat` are externalised (remain in `node_modules`).
 
+**CLI options:**
+- `--persist-dir <dir>` — enable file-backed diagram persistence
+- `--hint-level <none|minimal|full>` — control implicit lint feedback verbosity
+- `--disable-tools <list>` — hide specific tools (comma-separated names or group aliases: `batch`, `history`, `layout`, `collaboration`, `camunda`, `analysis`)
+- `--enable-tools <list>` — expose only listed tools (whitelist; mutually exclusive with `--disable-tools`); groups expand the same way
+
+Example: `bpmn-js-mcp --disable-tools batch,history --hint-level minimal`
+
 **Install from git:** `npm install github:datakurre/bpmn-js-mcp` works — `prepare` triggers `npm run build`.
 
 Output goes to `dist/`. Entry point is `dist/index.js` (also declared as the `bpmn-js-mcp` bin).

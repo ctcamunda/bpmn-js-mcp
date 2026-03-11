@@ -292,7 +292,16 @@ export async function handleExportBpmn(
   // Write to file if requested
   if (filePath) {
     await writeExportToFile(filePath, content);
-    content.push({ type: 'text', text: `\n✅ Written to ${filePath}` });
+    // Suppress XML from the response so large XML doesn't appear in LLM context.
+    // 'xml'  format: replace entire content with a status message.
+    // 'both' format: drop the XML item (index 0), keep the SVG, prepend status.
+    // 'svg'  format: keep SVG in response (not XML, so no suppression needed).
+    if (format === 'xml') {
+      content.length = 0;
+      content.push({ type: 'text', text: `✅ Written to ${filePath}` });
+    } else if (format === 'both') {
+      content.splice(0, 1, { type: 'text', text: `✅ Written to ${filePath}` });
+    }
   }
 
   // Append warnings
@@ -411,9 +420,10 @@ function boundsOverlap(a: any, b: any): boolean {
 export const TOOL_DEFINITION = {
   name: 'export_bpmn',
   description:
-    'Export a BPMN diagram as XML or SVG and write it to a file. By default, runs bpmnlint and blocks export if there are error-level lint issues. Set skipLint to true to bypass validation. Optionally scope to a subprocess or participant via elementId. ' +
+    'Export a BPMN diagram as XML or SVG. By default, runs bpmnlint and blocks export if there are error-level lint issues. Set skipLint to true to bypass validation. Optionally scope to a subprocess or participant via elementId. ' +
     "Use format 'both' to get XML and SVG in a single call. " +
-    'The exported content is also returned in the response.',
+    'When filePath is provided, the XML is written to disk and omitted from the response (only a status message is returned). ' +
+    'Combine with import_bpmn_xml filePath to implement an open→edit→save workflow without passing XML through context.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -427,7 +437,7 @@ export const TOOL_DEFINITION = {
       filePath: {
         type: 'string',
         description:
-          "File path to write the exported content to. For 'both' format, writes the XML portion. Directories are created automatically.",
+          "Optional file path to write the exported content to. For 'xml' and 'both' formats the XML is written to this path and omitted from the response. For 'both', the SVG is still returned. Directories are created automatically.",
       },
       skipLint: {
         type: 'boolean',
@@ -446,6 +456,6 @@ export const TOOL_DEFINITION = {
           'Optional ID of a SubProcess or Participant to export as a standalone diagram. When provided, lint gating is skipped.',
       },
     },
-    required: ['diagramId', 'format', 'filePath'],
+    required: ['diagramId', 'format'],
   },
 } as const;
