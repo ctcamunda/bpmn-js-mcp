@@ -13,18 +13,19 @@
 import { isType } from '../utils';
 
 /**
- * Extract the primary role (assignee or first candidateGroup) from a node.
+ * Extract the primary role from a zeebe:AssignmentDefinition.
  */
 function extractPrimaryRole(node: any): string | null {
-  const assignee = node.$attrs?.['camunda:assignee'] ?? node.assignee;
-  if (assignee) return `assignee:${assignee}`;
-
-  const candidateGroups = node.$attrs?.['camunda:candidateGroups'] ?? node.candidateGroups;
-  if (candidateGroups) {
-    const first = String(candidateGroups).split(',')[0]?.trim();
-    if (first) return `group:${first}`;
+  const extVals = node.extensionElements?.values || [];
+  for (const ext of extVals) {
+    if (ext.$type === 'zeebe:AssignmentDefinition') {
+      if (ext.assignee) return `assignee:${ext.assignee}`;
+      if (ext.candidateGroups) {
+        const first = String(ext.candidateGroups).split(',')[0]?.trim();
+        if (first) return `group:${first}`;
+      }
+    }
   }
-
   return null;
 }
 

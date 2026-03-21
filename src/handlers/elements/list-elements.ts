@@ -42,15 +42,30 @@ export interface ListElementsArgs {
   topology?: boolean;
 }
 
-/** Extract camunda:* attributes from a business object, if any. */
-function extractCamundaAttrs(bo: any): Record<string, any> | undefined {
-  if (!bo?.$attrs) return undefined;
-  const attrs: Record<string, any> = {};
-  for (const [key, value] of Object.entries(bo.$attrs)) {
-    if (key.startsWith('camunda:')) attrs[key] = value;
+/** Extract Zeebe extension element summaries from a business object, if any. */
+function extractZeebeExtensions(bo: any): Record<string, any> | undefined {
+  const exts = bo?.extensionElements?.values;
+  if (!exts || exts.length === 0) return undefined;
+  const result: Record<string, any> = {};
+  for (const ext of exts) {
+    const type = ext.$type;
+    if (!type?.startsWith('zeebe:')) continue;
+    const shortName = type.replace('zeebe:', '');
+    // Flatten simple attribute-only extensions
+    const attrs: Record<string, any> = {};
+    for (const [key, value] of Object.entries(ext)) {
+      if (key.startsWith('$') || key === 'values' || key === 'listeners' ||
+          key === 'inputParameters' || key === 'outputParameters' || key === 'properties') continue;
+      attrs[key] = value;
+    }
+    if (Object.keys(attrs).length > 0) {
+      result[shortName] = attrs;
+    } else {
+      result[shortName] = true; // Marker-only extensions like zeebe:UserTask
+    }
   }
-  if (Object.keys(attrs).length === 0) return undefined;
-  return attrs;
+  if (Object.keys(result).length === 0) return undefined;
+  return result;
 }
 
 /**
@@ -112,8 +127,8 @@ function mapElementToEntry(el: any): Record<string, any> {
     entry.waypoints = el.waypoints.map((wp: any) => ({ x: wp.x, y: wp.y }));
   }
 
-  const camundaAttrs = extractCamundaAttrs(el.businessObject);
-  if (camundaAttrs) entry.camundaProperties = camundaAttrs;
+  const zeebeExtensions = extractZeebeExtensions(el.businessObject);
+  if (zeebeExtensions) entry.zeebeExtensions = zeebeExtensions;
 
   return entry;
 }
@@ -160,8 +175,12 @@ function filterByProperty(elements: any[], property: { key: string; value?: stri
 
     const key = property.key;
     let val: any;
-    if (key.startsWith('camunda:')) {
-      val = bo.$attrs?.[key] ?? bo[key];
+    if (key.startsWith('zeebe:')) {
+      // Check zeebe extension elements for the attribute
+      const extVals = bo.extensionElements?.values || [];
+      const zeebeType = 'zeebe:' + key.split(':').slice(1).join(':').split('.')[0];
+      const ext = extVals.find((e: any) => e.$type === zeebeType);
+      val = ext ? true : undefined;
     } else {
       val = bo[key];
     }
@@ -266,7 +285,7 @@ export const TOOL_DEFINITION = {
         properties: {
           key: {
             type: 'string',
-            description: "Property key to check (e.g. 'camunda:assignee', 'isExecutable')",
+            description: "Property key to check (e.g. 'zeebe:TaskDefinition', 'isExecutable')",
           },
           value: {
             type: 'string',

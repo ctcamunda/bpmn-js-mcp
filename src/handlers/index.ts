@@ -42,6 +42,10 @@ import {
   handleListProcessVariables,
   TOOL_DEFINITION as LIST_PROCESS_VARIABLES_DEF,
 } from './core/list-process-variables';
+import {
+  handleGenerateFromStructure,
+  TOOL_DEFINITION as GENERATE_FROM_STRUCTURE_DEF,
+} from './core/generate-from-structure';
 
 // ── Elements: element CRUD operations ──────────────────────────────────────
 
@@ -106,6 +110,10 @@ import {
   handleSetCallActivityVariables,
   TOOL_DEFINITION as SET_CALL_ACTIVITY_VARIABLES_DEF,
 } from './properties/set-call-activity-variables';
+import {
+  handleConfigureZeebeExtensions,
+  TOOL_DEFINITION as CONFIGURE_ZEEBE_DEF,
+} from './properties/configure-zeebe-extensions';
 
 // ── Layout: layout, alignment, label adjustment ────────────────────────────
 
@@ -198,6 +206,8 @@ const TOOL_REGISTRY: ToolRegistration[] = [
   { definition: ADD_ELEMENT_CHAIN_DEF, handler: handleAddElementChain },
   // set_bpmn_connection_waypoints removed: waypoints+connectionId parameters on connect_bpmn_elements
   { definition: ASSIGN_ELEMENTS_TO_LANE_DEF, handler: handleAssignElementsToLane },
+  { definition: GENERATE_FROM_STRUCTURE_DEF, handler: handleGenerateFromStructure },
+  { definition: CONFIGURE_ZEEBE_DEF, handler: handleConfigureZeebeExtensions },
   // wrap_bpmn_process_in_collaboration removed: wrapExisting on create_bpmn_participant
   // handoff_bpmn_to_lane removed: fromElementId + toLaneId params on add_bpmn_element
   // convert_bpmn_collaboration_to_lanes removed: mergeFrom on create_bpmn_lanes
@@ -394,4 +404,6 @@ export {
   handleListProcessVariables,
   handleSetConnectionWaypoints,
   handleAnalyzeLanes,
+  handleGenerateFromStructure,
+  handleConfigureZeebeExtensions,
 };

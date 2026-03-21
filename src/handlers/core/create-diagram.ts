@@ -67,7 +67,7 @@ const WORKFLOW_CONTEXT_GUIDANCE: Record<
       'For role separation within one organization, use a single pool with lanes. ' +
       'Create a participant in one call using the `lanes` parameter (e.g. ' +
       '`create_bpmn_participant` with `lanes: [{ name: "Customer" }, { name: "Store" }]`). ' +
-      'This avoids multiple expanded pools, which are discouraged in Camunda 7 / Operaton ' +
+      'This avoids multiple expanded pools, which are discouraged ' +
       'because only one pool is executable.',
     step: {
       tool: 'create_bpmn_participant',
@@ -92,8 +92,8 @@ const WORKFLOW_CONTEXT_GUIDANCE: Record<
   'multi-system': {
     guidance:
       'For system-to-system integration, use a collaboration with pools per system. ' +
-      'Only one pool is executable (Camunda 7); others are collapsed message flow endpoints. ' +
-      'For simple integrations, consider ServiceTask with external topic instead.',
+      'Only one pool is executable; others are collapsed message flow endpoints. ' +
+      'For simple integrations, consider ServiceTask with zeebe:TaskDefinition instead.',
     step: {
       tool: 'create_bpmn_participant',
       description:

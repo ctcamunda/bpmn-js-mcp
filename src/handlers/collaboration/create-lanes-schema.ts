@@ -54,8 +54,8 @@ export const TOOL_DEFINITION = {
         type: 'boolean',
         description:
           'When true, automatically assigns existing elements in the participant to the ' +
-          'created lanes based on matching lane names to element roles (camunda:assignee ' +
-          'or camunda:candidateGroups, case-insensitive). Elements without role matches ' +
+      'created lanes based on matching lane names to element roles (zeebe:AssignmentDefinition ' +
+      'assignee or candidateGroups, case-insensitive). Elements without role matches ' +
           'fall back to type-based grouping (human tasks vs automated tasks). ' +
           'Flow-control elements (gateways, events) are assigned to their most-connected ' +
           "neighbor's lane. Run layout_bpmn_diagram afterwards for clean positioning.",

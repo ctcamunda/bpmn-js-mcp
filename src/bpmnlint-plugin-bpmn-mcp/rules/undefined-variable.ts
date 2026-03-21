@@ -2,119 +2,127 @@
  * Custom bpmnlint rule: undefined-variable
  *
  * Warns when a process variable is read (in condition expressions, input
- * parameter expressions, assignee expressions, etc.) but never written
- * (by form fields, output parameters, result variables, etc.) within
- * the same process scope.
+ * mapping source expressions, assignee expressions, etc.) but never written
+ * (by output mappings, script result variables, etc.) within the same
+ * process scope.
  *
  * Variables can be defined through:
- * - Form fields (camunda:FormData → camunda:FormField)
- * - Output parameters (camunda:InputOutput → camunda:OutputParameter)
- * - Script task result variables (camunda:resultVariable)
- * - Loop element variables (camunda:elementVariable)
- * - Call activity out-mappings (camunda:Out → target)
+ * - Output mappings (zeebe:IoMapping → zeebe:Output target)
+ * - Script result variables (zeebe:Script resultVariable)
+ * - Multi-instance element variable (zeebe:LoopCharacteristics outputElement)
+ * - Call activity with propagateAllChildVariables
  *
  * Variables are read through:
- * - Condition expressions on sequence flows
- * - Input parameters with expressions (camunda:InputParameter)
- * - Camunda properties: assignee, candidateGroups, candidateUsers, etc.
- * - Form field default values with expressions
- * - Loop collection references
- * - Loop completion conditions
+ * - Condition expressions on sequence flows (FEEL)
+ * - Input mappings (zeebe:IoMapping → zeebe:Input source)
+ * - Assignment definition (zeebe:AssignmentDefinition assignee, candidateGroups, candidateUsers)
+ * - Multi-instance inputCollection (FEEL)
+ * - Loop completion conditions (FEEL)
  */
 
 import { isType } from '../utils';
 
-/** Common JUEL keywords and built-in variables to ignore. */
-const JUEL_BUILTINS = new Set([
+/** FEEL keywords and built-in names to ignore. */
+const FEEL_BUILTINS = new Set([
   'true',
   'false',
   'null',
-  'empty',
   'not',
   'and',
   'or',
-  'eq',
-  'ne',
-  'lt',
-  'gt',
-  'le',
-  'ge',
-  'div',
-  'mod',
-  'instanceof',
-  'new',
-  // Execution context variables (not process variables)
-  'execution',
-  'task',
-  'delegateTask',
-  'externalTask',
-  'connector',
-  'loopCounter',
-  'nrOfInstances',
-  'nrOfActiveInstances',
-  'nrOfCompletedInstances',
-  // Common Java types/methods
-  'String',
-  'Integer',
-  'Long',
-  'Boolean',
-  'Double',
-  'Math',
-  'System',
-  'println',
-  'toString',
-  'equals',
-  'getVariable',
-  'setVariable',
-  'hasVariable',
-  'getVariableLocal',
-  'setVariableLocal',
-  'getName',
-  'getValue',
-  'size',
-  'length',
-  'isEmpty',
+  'if',
+  'then',
+  'else',
+  'for',
+  'in',
+  'return',
+  'some',
+  'every',
+  'satisfies',
+  'between',
+  'instance',
+  'of',
+  'function',
+  'string',
+  'number',
+  'boolean',
+  'context',
+  'date',
+  'time',
+  'duration',
+  // Built-in FEEL functions
+  'abs',
+  'ceiling',
+  'floor',
+  'round',
+  'decimal',
+  'even',
+  'odd',
+  'modulo',
+  'sqrt',
+  'log',
+  'exp',
+  'mean',
+  'sum',
+  'min',
+  'max',
+  'count',
+  'list',
+  'append',
+  'concatenate',
   'contains',
+  'starts',
+  'ends',
+  'matches',
+  'replace',
+  'split',
+  'substring',
+  'upper',
+  'lower',
+  'trim',
+  'now',
+  'today',
+  'day',
+  'month',
+  'year',
+  'flatten',
+  'distinct',
+  'sort',
+  'reverse',
+  'index',
+  'union',
+  'insert',
+  'remove',
   'get',
   'put',
-  'remove',
-  'add',
+  'entries',
+  'keys',
+  'values',
+  'with',
+  'before',
+  'after',
+  // Zeebe context variables
+  'loopCounter',
 ]);
 
-/** Camunda properties that may contain variable expressions. */
-const CAMUNDA_EXPR_ATTRS = [
-  'camunda:assignee',
-  'camunda:candidateGroups',
-  'camunda:candidateUsers',
-  'camunda:dueDate',
-  'camunda:followUpDate',
-  'camunda:priority',
-];
-
 /**
- * Extract variable names from a JUEL/UEL expression string.
- * Looks for `${...}` patterns and extracts identifier-like tokens.
+ * Extract variable names from a FEEL expression string.
+ * Extracts bare identifiers that look like variable references.
+ * FEEL expressions are plain (no ${} wrapping) — just identifier tokens.
  */
-function extractExpressionVars(expr: string): string[] {
+function extractFeelVars(expr: string): string[] {
   if (!expr || typeof expr !== 'string') return [];
+  // Strip leading = if present (FEEL indicator)
+  const body = expr.startsWith('=') ? expr.slice(1) : expr;
+  // Remove string literals before extracting identifiers
+  const cleaned = body.replace(/"[^"]*"/g, '');
   const vars: string[] = [];
-  const exprPattern = /\$\{([^}]+)}/g;
+  const identPattern = /\b([a-zA-Z_]\w*)\b/g;
   let match;
-  while ((match = exprPattern.exec(expr)) !== null) {
-    // Remove string literals (single-quoted and double-quoted) before extracting identifiers
-    const body = match[1].replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
-    const identPattern = /\b([a-zA-Z_]\w*)\b/g;
-    let idMatch;
-    while ((idMatch = identPattern.exec(body)) !== null) {
-      const id = idMatch[1];
-      if (
-        !JUEL_BUILTINS.has(id) &&
-        !id.startsWith('java') &&
-        !id.startsWith('org') &&
-        !id.startsWith('com')
-      ) {
-        vars.push(id);
-      }
+  while ((match = identPattern.exec(cleaned)) !== null) {
+    const id = match[1];
+    if (!FEEL_BUILTINS.has(id)) {
+      vars.push(id);
     }
   }
   return vars;
@@ -126,86 +134,89 @@ interface VarRef {
   access: 'read' | 'write';
 }
 
-/** Push expression-read refs into the refs array. */
+/** Push FEEL expression-read refs into the refs array. */
 function pushExprReads(refs: VarRef[], expr: string, elementId: string): void {
-  for (const v of extractExpressionVars(expr)) {
+  for (const v of extractFeelVars(expr)) {
     refs.push({ name: v, elementId, access: 'read' });
   }
 }
 
-/** Extract variable references from camunda:FormData. */
-function collectFromFormData(ext: any, elementId: string): VarRef[] {
-  const refs: VarRef[] = [];
-  for (const field of ext.fields || []) {
-    if (field.id) refs.push({ name: field.id, elementId, access: 'write' });
-    if (field.defaultValue) pushExprReads(refs, field.defaultValue, elementId);
-  }
-  return refs;
+/** Get a Zeebe extension element by type from a BPMN element. */
+function getZeebeExt(el: any, type: string): any | undefined {
+  return (el.extensionElements?.values || []).find((e: any) => e.$type === type);
 }
 
-/** Extract variable references from camunda:InputOutput parameters. */
-function collectFromInputOutput(ext: any, elementId: string): VarRef[] {
+/** Extract variable references from zeebe:IoMapping. */
+function collectFromIoMapping(ext: any, elementId: string): VarRef[] {
   const refs: VarRef[] = [];
-  for (const param of ext.inputParameters || []) {
-    if (param.name) refs.push({ name: param.name, elementId, access: 'write' });
-    if (param.value) pushExprReads(refs, param.value, elementId);
+  for (const input of ext.inputParameters || []) {
+    if (input.source) pushExprReads(refs, input.source, elementId);
+    // input target writes into task scope, not process scope — skip
   }
-  for (const param of ext.outputParameters || []) {
-    if (param.name) refs.push({ name: param.name, elementId, access: 'write' });
-    if (param.value) pushExprReads(refs, param.value, elementId);
+  for (const output of ext.outputParameters || []) {
+    if (output.target) refs.push({ name: output.target, elementId, access: 'write' });
+    if (output.source) pushExprReads(refs, output.source, elementId);
   }
-  return refs;
-}
-
-/** Extract variable references from camunda:In / camunda:Out mappings. */
-function collectFromCallActivityMapping(ext: any, elementId: string): VarRef[] {
-  const refs: VarRef[] = [];
-  const isOut = ext.$type === 'camunda:Out';
-  if (ext.target) refs.push({ name: ext.target, elementId, access: isOut ? 'write' : 'write' });
-  if (ext.source) refs.push({ name: ext.source, elementId, access: 'read' });
-  if (ext.sourceExpression) pushExprReads(refs, ext.sourceExpression, elementId);
   return refs;
 }
 
 /** Extract variable references from extension elements. */
 function collectFromExtensions(el: any): VarRef[] {
   const refs: VarRef[] = [];
-  const exts = el.extensionElements?.values || [];
-  for (const ext of exts) {
-    switch (ext.$type) {
-      case 'camunda:FormData':
-        refs.push(...collectFromFormData(ext, el.id));
-        break;
-      case 'camunda:InputOutput':
-        refs.push(...collectFromInputOutput(ext, el.id));
-        break;
-      case 'camunda:In':
-      case 'camunda:Out':
-        refs.push(...collectFromCallActivityMapping(ext, el.id));
-        break;
-    }
+  const elementId = el.id;
+
+  const ioMapping = getZeebeExt(el, 'zeebe:IoMapping');
+  if (ioMapping) {
+    refs.push(...collectFromIoMapping(ioMapping, elementId));
   }
+
+  const assignment = getZeebeExt(el, 'zeebe:AssignmentDefinition');
+  if (assignment) {
+    if (assignment.assignee) pushExprReads(refs, assignment.assignee, elementId);
+    if (assignment.candidateGroups) pushExprReads(refs, assignment.candidateGroups, elementId);
+    if (assignment.candidateUsers) pushExprReads(refs, assignment.candidateUsers, elementId);
+  }
+
+  const script = getZeebeExt(el, 'zeebe:Script');
+  if (script) {
+    if (script.expression) pushExprReads(refs, script.expression, elementId);
+    if (script.resultVariable) refs.push({ name: script.resultVariable, elementId, access: 'write' });
+  }
+
+  const calledElement = getZeebeExt(el, 'zeebe:CalledElement');
+  if (calledElement?.propagateAllChildVariables !== false) {
+    // When propagateAllChildVariables is true (default), all child variables
+    // are available — we can't statically determine which ones, so skip reporting
+  }
+
   return refs;
 }
 
-/** Extract variable references from loop characteristics. */
-function collectFromLoopCharacteristics(lc: any, elementId: string): VarRef[] {
+/** Extract variable references from zeebe:LoopCharacteristics. */
+function collectFromLoopCharacteristics(el: any, elementId: string): VarRef[] {
   const refs: VarRef[] = [];
-  const collection = lc.$attrs?.['camunda:collection'] ?? lc.collection;
-  if (collection && typeof collection === 'string') {
-    if (collection.includes('${')) {
-      pushExprReads(refs, collection, elementId);
-    } else {
-      refs.push({ name: collection, elementId, access: 'read' });
-    }
+  const zeebeLoop = getZeebeExt(el, 'zeebe:LoopCharacteristics');
+  if (!zeebeLoop) return refs;
+
+  if (zeebeLoop.inputCollection) {
+    pushExprReads(refs, zeebeLoop.inputCollection, elementId);
   }
-  const elemVar = lc.$attrs?.['camunda:elementVariable'] ?? lc.elementVariable;
-  if (elemVar && typeof elemVar === 'string') {
-    refs.push({ name: elemVar, elementId, access: 'write' });
+  if (zeebeLoop.inputElement) {
+    refs.push({ name: zeebeLoop.inputElement, elementId, access: 'write' });
   }
-  if (lc.completionCondition?.body) {
+  if (zeebeLoop.outputCollection) {
+    refs.push({ name: zeebeLoop.outputCollection, elementId, access: 'write' });
+  }
+  if (zeebeLoop.outputElement) {
+    pushExprReads(refs, zeebeLoop.outputElement, elementId);
+  }
+
+  // Standard BPMN completion condition
+  const lc = el.loopCharacteristics;
+  if (lc?.completionCondition?.body) {
     pushExprReads(refs, lc.completionCondition.body, elementId);
   }
+
   return refs;
 }
 
@@ -215,38 +226,11 @@ function collectVarsFromElement(el: any): VarRef[] {
   const elementId = el.id;
 
   refs.push(...collectFromExtensions(el));
+  refs.push(...collectFromLoopCharacteristics(el, elementId));
 
-  // camunda:initiator on start events → write (defines the process variable)
-  if (isType(el, 'bpmn:StartEvent')) {
-    const initiator = el.$attrs?.['camunda:initiator'] ?? el.initiator;
-    if (initiator && typeof initiator === 'string') {
-      refs.push({ name: initiator, elementId, access: 'write' });
-    }
-  }
-
-  // Script task result variable → write
-  const resultVar = el.$attrs?.['camunda:resultVariable'] ?? el.resultVariable;
-  if (resultVar && typeof resultVar === 'string') {
-    refs.push({ name: resultVar, elementId, access: 'write' });
-  }
-
-  // Condition expression → read
+  // Condition expression on sequence flows → read
   if (el.conditionExpression?.body) {
     pushExprReads(refs, el.conditionExpression.body, elementId);
-  }
-
-  // Camunda expression properties → read
-  for (const attr of CAMUNDA_EXPR_ATTRS) {
-    const shortKey = attr.replace('camunda:', '');
-    const val = el.$attrs?.[attr] ?? el[shortKey];
-    if (val && typeof val === 'string') {
-      pushExprReads(refs, val, elementId);
-    }
-  }
-
-  // Loop characteristics
-  if (el.loopCharacteristics) {
-    refs.push(...collectFromLoopCharacteristics(el.loopCharacteristics, elementId));
   }
 
   return refs;
@@ -273,12 +257,10 @@ function ruleFactory() {
     }
 
     // Report variables that are read but never written
-    // Group by variable name to avoid duplicate reports on the same element
     const reported = new Set<string>();
     for (const ref of allRefs) {
       if (ref.access !== 'read') continue;
       if (writtenVars.has(ref.name)) continue;
-      // Deduplicate: only report once per variable per element
       const key = `${ref.elementId}:${ref.name}`;
       if (reported.has(key)) continue;
       reported.add(key);
@@ -286,7 +268,7 @@ function ruleFactory() {
       reporter.report(
         ref.elementId,
         `Variable "${ref.name}" is used but never defined in this process — ` +
-          `ensure it is set by a form field, output parameter, result variable, or upstream process`
+          `ensure it is set by an output mapping, script result variable, or upstream process`
       );
     }
   }

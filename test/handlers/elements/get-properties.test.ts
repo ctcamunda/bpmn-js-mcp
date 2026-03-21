@@ -15,13 +15,16 @@ describe('get_bpmn_element_properties', () => {
     await handleSetProperties({
       diagramId,
       elementId: taskId,
-      properties: { 'camunda:assignee': 'alice' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'alice' } },
     });
 
     const res = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
     expect(res.type).toBe('bpmn:UserTask');
     expect(res.name).toBe('Review');
-    expect(res.camundaProperties['camunda:assignee']).toBe('alice');
+    const assignDef = res.extensionElements?.find(
+      (e: any) => e.type === 'zeebe:AssignmentDefinition'
+    );
+    expect(assignDef?.assignee).toBe('alice');
   });
 
   test('includes incoming/outgoing connections', async () => {

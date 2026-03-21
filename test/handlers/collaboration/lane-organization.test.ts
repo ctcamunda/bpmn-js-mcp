@@ -94,7 +94,7 @@ describe('suggest_bpmn_lane_organization', () => {
     expect(res.suggestions.length).toBeGreaterThanOrEqual(2);
   });
 
-  test('suggests lanes based on camunda:assignee when roles are present', async () => {
+  test('suggests lanes based on zeebe:assignmentDefinition when roles are present', async () => {
     const diagramId = await createDiagram();
     const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
     const task1 = await addElement(diagramId, 'bpmn:UserTask', { name: 'Submit Request' });
@@ -111,17 +111,17 @@ describe('suggest_bpmn_lane_organization', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:assignee': 'requester' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'requester' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task2,
-      properties: { 'camunda:assignee': 'manager' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'manager' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task3,
-      properties: { 'camunda:assignee': 'requester' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'requester' } },
     });
 
     const res = parseResult(await handleSuggestLaneOrganization({ diagramId }));
@@ -155,7 +155,7 @@ describe('suggest_bpmn_lane_organization', () => {
     await handleSetProperties({
       diagramId,
       elementId: userTask1,
-      properties: { 'camunda:assignee': 'admin' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'admin' } },
     });
 
     const res = parseResult(await handleSuggestLaneOrganization({ diagramId }));

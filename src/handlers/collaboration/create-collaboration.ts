@@ -220,12 +220,12 @@ const _UNUSED_TOOL_DEFINITION = {
     '**⚠ Lanes vs Pools:** If you need role separation within a single organization/process ' +
     '(e.g. Requester, Approver, Finance), use **lanes** inside one expanded pool — NOT multiple expanded pools. ' +
     'Multiple expanded pools represent separate organizations/systems that communicate via message flows. ' +
-    '**Camunda 7 / Operaton pattern:** Only one pool can be deployed and executed — additional pools must be ' +
+    '**Camunda 8 pattern:** Only one pool can be deployed and executed — additional pools must be ' +
     '**collapsed** (set collapsed: true) and serve only to document message flow endpoints. ' +
     'The executable pool contains the full process (start → tasks → end); collapsed pools are thin bars ' +
     'representing external systems or partners. Message flows connect elements in the expanded pool to ' +
     'collapsed pool shapes directly. For simple integrations where the external system is not a meaningful ' +
-    'message partner, prefer bpmn:ServiceTask (camunda:type="external", camunda:topic) instead of a collaboration. ' +
+    'message partner, prefer bpmn:ServiceTask with zeebe:TaskDefinition instead of a collaboration. ' +
     'Requires at least 2 participants.',
   inputSchema: {
     type: 'object',
@@ -249,7 +249,7 @@ const _UNUSED_TOOL_DEFINITION = {
             collapsed: {
               type: 'boolean',
               description:
-                'If true, creates a collapsed pool (thin bar, no internal flow). Use for non-executable partner pools in Camunda 7 / Operaton that only document message flow endpoints.',
+                'If true, creates a collapsed pool (thin bar, no internal flow). Use for non-executable partner pools that only document message flow endpoints.',
             },
             width: {
               type: 'number',
@@ -299,7 +299,7 @@ const _UNUSED_TOOL_DEFINITION = {
     required: ['diagramId', 'participants'],
     examples: [
       {
-        title: 'Camunda 7 pattern: one executable pool + one collapsed partner pool',
+        title: 'Camunda 8 pattern: one executable pool + one collapsed partner pool',
         value: {
           diagramId: '<diagram-id>',
           participants: [

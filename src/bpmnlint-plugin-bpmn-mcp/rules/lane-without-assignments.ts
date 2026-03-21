@@ -2,9 +2,9 @@
  * Custom bpmnlint rule: lane-without-assignments
  *
  * Warns when lanes exist in a process but user/manual tasks within
- * those lanes lack `camunda:assignee` or `camunda:candidateGroups`
- * properties. Lanes imply role-based organisation, so tasks should
- * have matching role assignments for the process to execute correctly.
+ * those lanes lack a `zeebe:AssignmentDefinition` extension element.
+ * Lanes imply role-based organisation, so tasks should have matching
+ * role assignments for the process to execute correctly.
  *
  * Only fires when at least 2 lanes exist (single-lane processes are
  * typically organisational placeholders).
@@ -16,13 +16,14 @@ import { isType } from '../utils';
 const ROLE_TASK_TYPES = ['bpmn:UserTask', 'bpmn:ManualTask'];
 
 /**
- * Check whether an element has any Camunda role assignment.
+ * Check whether an element has a Zeebe assignment definition.
  */
 function hasRoleAssignment(el: any): boolean {
-  const assignee = el.$attrs?.['camunda:assignee'] ?? el.assignee;
-  const candidateUsers = el.$attrs?.['camunda:candidateUsers'] ?? el.candidateUsers;
-  const candidateGroups = el.$attrs?.['camunda:candidateGroups'] ?? el.candidateGroups;
-  return !!(assignee || candidateUsers || candidateGroups);
+  const ad = (el.extensionElements?.values || []).find(
+    (e: any) => e.$type === 'zeebe:AssignmentDefinition'
+  );
+  if (!ad) return false;
+  return !!(ad.assignee || ad.candidateUsers || ad.candidateGroups);
 }
 
 function countLanes(laneSets: any[]): number {
@@ -58,7 +59,7 @@ function reportIfMissingRole(el: any, lane: any, reporter: any): void {
   reporter.report(
     el.id,
     `${el.$type.replace('bpmn:', '')} "${el.name || el.id}" is in lane ` +
-      `"${lane.name || lane.id}" but has no camunda:assignee or camunda:candidateGroups. ` +
+      `"${lane.name || lane.id}" but has no zeebe:AssignmentDefinition. ` +
       `Use set_bpmn_element_properties to set a role assignment matching the lane.`
   );
 }

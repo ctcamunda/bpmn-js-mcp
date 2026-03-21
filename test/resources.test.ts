@@ -25,10 +25,10 @@ describe('RESOURCE_TEMPLATES', () => {
 });
 
 describe('STATIC_RESOURCES', () => {
-  test('has the executable Camunda 7 guide', () => {
+  test('has the executable Camunda 8 guide', () => {
     expect(STATIC_RESOURCES.length).toBeGreaterThanOrEqual(1);
     const uris = STATIC_RESOURCES.map((r) => r.uri);
-    expect(uris).toContain('bpmn://guides/executable-camunda7');
+    expect(uris).toContain('bpmn://guides/executable-camunda8');
   });
 });
 
@@ -39,7 +39,7 @@ describe('listResources', () => {
     expect(resources).toHaveLength(1 + STATIC_RESOURCES.length);
     const uris = resources.map((r: any) => r.uri);
     expect(uris).toContain('bpmn://diagrams');
-    expect(uris).toContain('bpmn://guides/executable-camunda7');
+    expect(uris).toContain('bpmn://guides/executable-camunda8');
   });
 
   test('returns per-diagram resources when diagrams exist', async () => {
@@ -49,7 +49,7 @@ describe('listResources', () => {
     expect(resources).toHaveLength(1 + STATIC_RESOURCES.length + 5);
     const uris = resources.map((r: any) => r.uri);
     expect(uris).toContain('bpmn://diagrams');
-    expect(uris).toContain('bpmn://guides/executable-camunda7');
+    expect(uris).toContain('bpmn://guides/executable-camunda8');
     expect(uris).toContain(`bpmn://diagram/${id}/summary`);
     expect(uris).toContain(`bpmn://diagram/${id}/lint`);
     expect(uris).toContain(`bpmn://diagram/${id}/variables`);
@@ -124,12 +124,12 @@ describe('readResource', () => {
     );
   });
 
-  test('reads bpmn://guides/executable-camunda7', async () => {
-    const result = await readResource('bpmn://guides/executable-camunda7');
+  test('reads bpmn://guides/executable-camunda8', async () => {
+    const result = await readResource('bpmn://guides/executable-camunda8');
     expect(result.contents).toHaveLength(1);
     expect(result.contents[0].mimeType).toBe('text/markdown');
-    expect(result.contents[0].text).toContain('Executable BPMN for Camunda 7');
-    expect(result.contents[0].text).toContain('External Task pattern');
+    expect(result.contents[0].text).toContain('Executable BPMN for Camunda 8');
+    expect(result.contents[0].text).toContain('zeebe:TaskDefinition');
     expect(result.contents[0].text).toContain('Link events');
     expect(result.contents[0].text).toContain('implicit merge');
   });

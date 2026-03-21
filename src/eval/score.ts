@@ -552,7 +552,7 @@ export function scoreLayout(metrics: LayoutMetrics): {
   score -= metrics.horizontalMisalignments * 3;
   score -= metrics.verticalImbalance * 2;
 
-  // Camunda 7 executability penalties (lint integration)
+  // Camunda 8 executability penalties (lint integration)
   score -= metrics.lintErrors * 15;
   score -= metrics.lintWarnings * 3;
 

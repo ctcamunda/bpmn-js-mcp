@@ -108,15 +108,13 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
       {
         tool: 'set_bpmn_form_data',
         description:
-          'Define generated form fields for user input (simple key/value fields embedded in BPMN XML, good for prototyping)',
+          'Define a Zeebe form (formId referencing a deployed Camunda Form, formKey for custom forms, or embedded JSON form body)',
       },
       {
         tool: 'set_bpmn_element_properties',
         description:
-          'Set camunda:assignee, camunda:candidateGroups, camunda:dueDate. ' +
-          'For forms: camunda:formRef (Camunda Platform Form deployed separately — use a companion form-js-mcp server if available to design the form), ' +
-          'camunda:formKey (embedded:app:forms/... or external app:...), ' +
-          'or camunda:formRefBinding/camunda:formRefVersion for version control.',
+          'Set zeebe:AssignmentDefinition properties: zeebe:assignee, zeebe:candidateGroups, zeebe:candidateUsers (FEEL expressions). ' +
+          'For forms: use set_bpmn_form_data with formId (deployed form reference) or formKey (custom form).',
       },
     ],
   },
@@ -126,11 +124,11 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
       {
         tool: 'set_bpmn_element_properties',
         description:
-          'Set camunda:type="external" with camunda:topic, or camunda:class / camunda:delegateExpression for Java delegates',
+          'Set zeebe:TaskDefinition with zeebe:type (job type for workers) and optional zeebe:retries (default "3")',
       },
       {
         tool: 'set_bpmn_input_output_mapping',
-        description: 'Map process variables to/from the service task',
+        description: 'Map process variables to/from the service task using FEEL expressions',
       },
     ],
   },
@@ -139,7 +137,7 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
     hints: [
       {
         tool: 'set_bpmn_element_properties',
-        description: 'Set scriptFormat, script (inline body), and optional camunda:resultVariable',
+        description: 'Set scriptFormat and script (inline FEEL expression body)',
       },
     ],
   },
@@ -149,11 +147,8 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
       {
         tool: 'set_bpmn_element_properties',
         description:
-          'Primary: Set camunda:decisionRef to a DMN decision table ID (deployed separately). ' +
-          "Also set camunda:decisionRefBinding ('latest'/'deployment'/'version'), " +
-          "camunda:mapDecisionResult ('singleEntry'/'singleResult'/'collectEntries'/'resultList'), " +
-          "and camunda:decisionRefVersion (when binding='version'). " +
-          'Alternative: camunda:class or camunda:delegateExpression for custom Java rule logic.',
+          'Set zeebe:CalledDecision with zeebe:decisionId (DMN decision table ID) and zeebe:resultVariable (output variable name). ' +
+          'Alternatively use zeebe:TaskDefinition for custom business rule worker.',
       },
       {
         tool: 'set_bpmn_input_output_mapping',
@@ -168,12 +163,12 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
     hints: [
       {
         tool: 'set_bpmn_call_activity_variables',
-        description: 'Map variables between parent and called process (camunda:in/out)',
+        description: 'Set zeebe:CalledElement processId and configure variable propagation (propagateAllChildVariables or explicit I/O mappings)',
       },
       {
         tool: 'set_bpmn_element_properties',
         description:
-          "Set calledElement (process key) and camunda:calledElementBinding ('latest', 'deployment', 'version', 'versionTag') to control version resolution",
+          'Set calledElement (process ID) via zeebe:CalledElement',
       },
     ],
   },
@@ -193,7 +188,7 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
       {
         tool: 'set_bpmn_element_properties',
         description:
-          'Set camunda:class, camunda:delegateExpression, or camunda:expression for message sending',
+          'Set zeebe:TaskDefinition with zeebe:type (job type for the message-sending worker)',
       },
     ],
   },
@@ -340,82 +335,35 @@ function hintTriggeredByEvent(props: Record<string, any>, hints: Hint[]): void {
   }
 }
 
-/** Hint for async-before on external tasks / Java delegates. */
-function hintAsyncBefore(
-  props: Record<string, any>,
-  camundaProps: Record<string, any>,
-  element: any,
-  hints: Hint[]
-): void {
+/** Hint for zeebe:CalledDecision on BusinessRuleTask. */
+function hintCalledDecision(zeebeProps: Record<string, any>, elType: string, hints: Hint[]): void {
   if (
-    (camundaProps['camunda:topic'] || camundaProps['camunda:class']) &&
-    !props['camunda:asyncBefore'] &&
-    !element.businessObject?.asyncBefore
-  ) {
-    hints.push({
-      tool: 'set_bpmn_element_properties',
-      description:
-        'Consider setting camunda:asyncBefore=true for reliable execution with external tasks or Java delegates',
-    });
-  }
-}
-
-/** Hint for DMN decision ref binding on BusinessRuleTask. */
-function hintDmnBinding(camundaProps: Record<string, any>, elType: string, hints: Hint[]): void {
-  if (
-    camundaProps['camunda:decisionRef'] &&
+    zeebeProps['zeebe:decisionId'] &&
     elType === 'bpmn:BusinessRuleTask' &&
-    !camundaProps['camunda:decisionRefBinding']
+    !zeebeProps['zeebe:resultVariable']
   ) {
     hints.push({
       tool: 'set_bpmn_element_properties',
       description:
-        "Consider setting camunda:decisionRefBinding ('latest', 'deployment', 'version') and camunda:mapDecisionResult ('singleEntry', 'singleResult', 'collectEntries', 'resultList') to control DMN evaluation behavior. When binding='version', also set camunda:decisionRefVersion.",
+        'Set zeebe:resultVariable to specify the process variable that receives the DMN decision result',
     });
   }
 }
 
-/** Hint for calledElementBinding on CallActivity. */
-function hintCalledElementBinding(
-  props: Record<string, any>,
-  camundaProps: Record<string, any>,
+/** Hint for zeebe:CalledElement on CallActivity. */
+function hintCalledElement(
+  zeebeProps: Record<string, any>,
   elType: string,
   hints: Hint[]
 ): void {
   if (
-    (props['calledElement'] || camundaProps['camunda:calledElement']) &&
-    elType === 'bpmn:CallActivity' &&
-    !camundaProps['camunda:calledElementBinding']
+    zeebeProps['zeebe:processId'] &&
+    elType === 'bpmn:CallActivity'
   ) {
     hints.push({
-      tool: 'set_bpmn_element_properties',
+      tool: 'set_bpmn_call_activity_variables',
       description:
-        "Consider setting camunda:calledElementBinding ('latest', 'deployment', 'version', 'versionTag') to control which version of the called process is used",
-    });
-  }
-}
-
-/** Hint for historyTimeToLive after setting isExecutable. */
-function hintHistoryTtl(props: Record<string, any>, element: any, hints: Hint[]): void {
-  if (props['isExecutable'] !== true) return;
-  const bo = element.businessObject;
-  const hasHttl = bo?.historyTimeToLive || bo?.$attrs?.['camunda:historyTimeToLive'];
-  if (!hasHttl) {
-    hints.push({
-      tool: 'set_bpmn_element_properties',
-      description:
-        'Consider setting camunda:historyTimeToLive (e.g. "P180D") to control how long process history data is retained. Required by Camunda 7.20+ by default.',
-    });
-  }
-}
-
-/** Hint for formRefBinding when formRef is set. */
-function hintFormRefBinding(camundaProps: Record<string, any>, hints: Hint[]): void {
-  if (camundaProps['camunda:formRef'] && !camundaProps['camunda:formRefBinding']) {
-    hints.push({
-      tool: 'set_bpmn_element_properties',
-      description:
-        "Consider setting camunda:formRefBinding ('latest', 'deployment', 'version') to control which Camunda Form version is used",
+        'Configure variable propagation for the call activity — set propagateAllChildVariables or define explicit I/O mappings',
     });
   }
 }
@@ -425,18 +373,15 @@ function hintFormRefBinding(camundaProps: Record<string, any>, hints: Hint[]): v
  */
 export function buildPropertyHints(
   props: Record<string, any>,
-  camundaProps: Record<string, any>,
+  zeebeProps: Record<string, any>,
   element: any
 ): Hint[] {
   const hints: Hint[] = [];
   const elType = element.type || element.businessObject?.$type || '';
 
   hintTriggeredByEvent(props, hints);
-  hintAsyncBefore(props, camundaProps, element, hints);
-  hintDmnBinding(camundaProps, elType, hints);
-  hintCalledElementBinding(props, camundaProps, elType, hints);
-  hintHistoryTtl(props, element, hints);
-  hintFormRefBinding(camundaProps, hints);
+  hintCalledDecision(zeebeProps, elType, hints);
+  hintCalledElement(zeebeProps, elType, hints);
 
   return hints;
 }

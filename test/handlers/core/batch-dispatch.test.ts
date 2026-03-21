@@ -30,7 +30,8 @@ describe('batch_bpmn_operations — all tools dispatchable', () => {
     //   replace_bpmn_element → set_bpmn_element_properties (elementType),
     //   set_bpmn_connection_waypoints → connect_bpmn_elements (connectionId + waypoints),
     //   handoff_bpmn_to_lane → add_bpmn_element (fromElementId + toLaneId)).
-    expect(TOOL_DEFINITIONS.length).toBe(30);
+    // Plus 2 new tools: generate_bpmn_from_structure, configure_bpmn_zeebe_extensions.
+    expect(TOOL_DEFINITIONS.length).toBe(32);
 
     // Verify no tool name is duplicated
     const names = TOOL_DEFINITIONS.map((t) => t.name);

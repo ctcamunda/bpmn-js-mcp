@@ -7,15 +7,15 @@ import {
 } from '../../../src/handlers';
 import { createDiagram, addElement, clearDiagrams } from '../../helpers';
 
-describe('Camunda 7 External Task workflow', () => {
+describe('Zeebe job worker workflow', () => {
   beforeEach(() => {
     clearDiagrams();
   });
 
-  test('creates a full external task with topic, I/O mapping, and boundary error', async () => {
-    const diagramId = await createDiagram('External Task Process');
+  test('creates a full job worker task with I/O mapping and boundary error', async () => {
+    const diagramId = await createDiagram('Job Worker Process');
 
-    // 1. Create service task with external task type
+    // 1. Create service task with task definition
     const serviceTaskId = await addElement(diagramId, 'bpmn:ServiceTask', {
       name: 'Process Order',
       x: 300,
@@ -25,8 +25,7 @@ describe('Camunda 7 External Task workflow', () => {
       diagramId,
       elementId: serviceTaskId,
       properties: {
-        'camunda:type': 'external',
-        'camunda:topic': 'order-processing',
+        'zeebe:taskDefinition': { type: 'order-processing', retries: '3' },
       },
     });
 
@@ -34,8 +33,8 @@ describe('Camunda 7 External Task workflow', () => {
     await handleSetInputOutput({
       diagramId,
       elementId: serviceTaskId,
-      inputParameters: [{ name: 'orderId', value: "${execution.getVariable('orderId')}" }],
-      outputParameters: [{ name: 'result', value: '${orderResult}' }],
+      inputParameters: [{ source: '=orderId', target: 'fetchOrderId' }],
+      outputParameters: [{ source: '=result', target: 'orderResult' }],
     });
 
     // 3. Attach boundary error event
@@ -58,31 +57,30 @@ describe('Camunda 7 External Task workflow', () => {
     // Verify the full XML
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:type="external"');
-    expect(xml).toContain('camunda:topic="order-processing"');
-    expect(xml).toContain('camunda:inputOutput');
+    expect(xml).toContain('zeebe:taskDefinition');
+    expect(xml).toContain('order-processing');
+    expect(xml).toContain('zeebe:ioMapping');
     expect(xml).toContain('orderId');
     expect(xml).toContain('errorEventDefinition');
   });
 
-  test('auto-sets camunda:type=external when only camunda:topic is provided', async () => {
+  test('sets task definition type on a service task', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'Auto External',
+      name: 'Worker Task',
     });
 
-    // Only set topic — type should be auto-set to "external"
     await handleSetProperties({
       diagramId,
       elementId: taskId,
       properties: {
-        'camunda:topic': 'my-topic',
+        'zeebe:taskDefinition': { type: 'my-worker' },
       },
     });
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:type="external"');
-    expect(xml).toContain('camunda:topic="my-topic"');
+    expect(xml).toContain('zeebe:taskDefinition');
+    expect(xml).toContain('my-worker');
   });
 });

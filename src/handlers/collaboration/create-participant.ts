@@ -250,7 +250,7 @@ export const TOOL_DEFINITION = {
     'Create participant(s) (pools) in a BPMN diagram. ' +
     'Single pool: pass name. Wrap existing process: set wrapExisting=true. ' +
     'Multi-pool collaboration: pass participants array (min 2). ' +
-    'Camunda 7: only one pool is executable; additional pools must be collapsed. ' +
+    'Camunda 8: only one pool is executable; additional pools must be collapsed. ' +
     'For role separation within one organization, use lanes inside one pool — not multiple expanded pools.',
   inputSchema: {
     type: 'object',

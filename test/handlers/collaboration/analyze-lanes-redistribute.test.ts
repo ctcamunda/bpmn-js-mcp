@@ -58,7 +58,7 @@ describe('analyze_bpmn_lanes mode: redistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1.elementId,
-      properties: { 'camunda:candidateGroups': 'support' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'support' } },
     });
     await handleAssignElementsToLane({
       diagramId,
@@ -77,7 +77,7 @@ describe('analyze_bpmn_lanes mode: redistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task2.elementId,
-      properties: { 'camunda:candidateGroups': 'engineering' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'engineering' } },
     });
     await handleAssignElementsToLane({
       diagramId,

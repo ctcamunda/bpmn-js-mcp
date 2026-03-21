@@ -321,10 +321,10 @@ describe('linter', () => {
   });
 
   describe('DEFAULT_LINT_CONFIG', () => {
-    test('extends bpmnlint:recommended, camunda-compat, and bpmn-mcp plugins', () => {
+    test('extends bpmnlint:recommended, camunda-compat (cloud 8.9), and bpmn-mcp plugins', () => {
       expect(DEFAULT_LINT_CONFIG.extends).toEqual([
         'bpmnlint:recommended',
-        'plugin:camunda-compat/camunda-platform-7-24',
+        'plugin:camunda-compat/camunda-cloud-8-9',
         'plugin:bpmn-mcp/recommended',
       ]);
     });
@@ -337,37 +337,30 @@ describe('linter', () => {
   });
 
   describe('McpPluginResolver — custom bpmn-mcp rules', () => {
-    test('resolves bpmn-mcp/camunda-topic-without-external-type via plugin config', async () => {
+    test('resolves bpmn-mcp/service-task-missing-implementation via plugin config', async () => {
       const diagramId = await createDiagram();
-      // Add a service task with topic but no external type
-      const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
+      // Add a service task with no zeebe:TaskDefinition
+      await addElement(diagramId, 'bpmn:ServiceTask', {
         name: 'Worker',
         x: 200,
         y: 200,
       });
-      // Manually set topic without external type via modeler
+
       const diagram = getDiagram(diagramId);
-      const elementRegistry = diagram!.modeler.get('elementRegistry');
-      const modeling = diagram!.modeler.get('modeling');
-      const element = elementRegistry.get(taskId);
-      modeling.updateProperties(element, {
-        'camunda:topic': 'my-topic',
-        'camunda:type': 'connector', // NOT external
-      });
 
       // Lint with bpmn-mcp plugin rules explicitly enabled as error
       const flat = await lintDiagramFlat(diagram!, {
         extends: 'plugin:bpmn-mcp/recommended',
         rules: {
-          'bpmn-mcp/camunda-topic-without-external-type': 'error',
+          'bpmn-mcp/service-task-missing-implementation': 'error',
         },
       });
 
-      const topicIssues = flat.filter(
-        (i) => i.rule === 'bpmn-mcp/camunda-topic-without-external-type'
+      const implIssues = flat.filter(
+        (i) => i.rule === 'bpmn-mcp/service-task-missing-implementation'
       );
-      expect(topicIssues.length).toBeGreaterThan(0);
-      expect(topicIssues[0].message).toContain('camunda:topic');
+      expect(implIssues.length).toBeGreaterThan(0);
+      expect(implIssues[0].message).toContain('zeebe:TaskDefinition');
     });
 
     test('resolves bpmn-mcp/gateway-missing-default via plugin config', async () => {
@@ -410,7 +403,7 @@ describe('linter', () => {
       const diagram = getDiagram(diagramId);
       // Lint with explicit camunda-compat config to verify plugin loads
       const flat = await lintDiagramFlat(diagram!, {
-        extends: ['bpmnlint:recommended', 'plugin:camunda-compat/camunda-platform-7-24'],
+        extends: ['bpmnlint:recommended', 'plugin:camunda-compat/camunda-cloud-8-9'],
         rules: {
           'label-required': 'off',
           'no-overlapping-elements': 'off',
@@ -419,7 +412,6 @@ describe('linter', () => {
       });
 
       // Should not error — plugin loaded and resolved successfully
-      // The camunda-compat plugin for 7.24 has history-time-to-live as info
       expect(flat).toBeDefined();
       expect(Array.isArray(flat)).toBe(true);
     });

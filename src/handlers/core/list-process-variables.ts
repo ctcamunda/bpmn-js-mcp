@@ -2,14 +2,13 @@
  * Handler for list_bpmn_process_variables tool.
  *
  * Scans all elements in a diagram and extracts process variables from:
- * - Form fields (camunda:FormData → camunda:FormField)
- * - Input/output parameter mappings (camunda:InputOutput)
- * - Call activity variable mappings (camunda:In / camunda:Out)
- * - Condition expressions on sequence flows
- * - Camunda properties (assignee, candidateGroups, candidateUsers)
- * - Script tasks (camunda:resultVariable)
- * - Loop characteristics (collection, elementVariable)
- * - Execution/task listener scripts
+ * - I/O mappings (zeebe:IoMapping → zeebe:Input/Output)
+ * - Call activity variable propagation (zeebe:CalledElement)
+ * - Condition expressions on sequence flows (FEEL)
+ * - Assignment definitions (zeebe:AssignmentDefinition)
+ * - Script tasks (zeebe:Script resultVariable)
+ * - Loop characteristics (zeebe:LoopCharacteristics)
+ * - Called decisions (zeebe:CalledDecision resultVariable)
  */
 // @readonly
 
@@ -38,93 +37,38 @@ interface VariableReference {
   elementName?: string;
 }
 
+/** FEEL keywords and built-in names to ignore when extracting variables. */
+const FEEL_KEYWORDS = new Set([
+  'true', 'false', 'null', 'not', 'and', 'or',
+  'if', 'then', 'else', 'for', 'in', 'return',
+  'some', 'every', 'satisfies', 'between', 'instance', 'of',
+  'function', 'string', 'number', 'boolean', 'context',
+  'date', 'time', 'duration',
+  'abs', 'ceiling', 'floor', 'round', 'decimal',
+  'mean', 'sum', 'min', 'max', 'count', 'list',
+  'append', 'concatenate', 'contains', 'starts', 'ends',
+  'matches', 'replace', 'split', 'substring',
+  'upper', 'lower', 'trim', 'now', 'today',
+  'flatten', 'distinct', 'sort', 'reverse',
+  'loopCounter',
+]);
+
 /**
- * Extract variable names referenced in a JUEL/UEL expression string.
- * Looks for `${...}` patterns and extracts identifier-like tokens.
+ * Extract variable names from a FEEL expression string.
  */
-function extractExpressionVariables(expr: string): string[] {
+function extractFeelVars(expr: string): string[] {
   if (!expr || typeof expr !== 'string') return [];
+  const body = expr.startsWith('=') ? expr.slice(1) : expr;
+  const cleaned = body.replace(/"[^"]*"/g, '');
   const vars: string[] = [];
-  // Match ${...} expressions
-  const exprPattern = /\$\{([^}]+)}/g;
+  const identPattern = /\b([a-zA-Z_]\w*)\b/g;
   let match;
-  while ((match = exprPattern.exec(expr)) !== null) {
-    const body = match[1];
-    // Extract identifiers (skip Java method calls, operators, literals)
-    const identPattern = /\b([a-zA-Z_]\w*)\b/g;
-    let idMatch;
-    while ((idMatch = identPattern.exec(body)) !== null) {
-      const id = idMatch[1];
-      // Skip common JUEL keywords and built-in variables
-      if (
-        !JUEL_KEYWORDS.has(id) &&
-        !id.startsWith('java') &&
-        !id.startsWith('org') &&
-        !id.startsWith('com')
-      ) {
-        vars.push(id);
-      }
-    }
+  while ((match = identPattern.exec(cleaned)) !== null) {
+    const id = match[1];
+    if (!FEEL_KEYWORDS.has(id)) vars.push(id);
   }
   return vars;
 }
-
-const JUEL_KEYWORDS = new Set([
-  'true',
-  'false',
-  'null',
-  'empty',
-  'not',
-  'and',
-  'or',
-  'eq',
-  'ne',
-  'lt',
-  'gt',
-  'le',
-  'ge',
-  'div',
-  'mod',
-  'instanceof',
-  'new',
-  // Common built-in variables (execution context, not process variables)
-  'execution',
-  'task',
-  'delegateTask',
-  'externalTask',
-  'connector',
-  'cardinalityExpression',
-  'loopCounter',
-  'nrOfInstances',
-  'nrOfActiveInstances',
-  'nrOfCompletedInstances',
-  // Common Java types/methods
-  'String',
-  'Integer',
-  'Long',
-  'Boolean',
-  'Double',
-  'Math',
-  'System',
-  'println',
-  'toString',
-  'equals',
-  'getVariable',
-  'setVariable',
-  'hasVariable',
-  'getVariableLocal',
-  'setVariableLocal',
-  'getName',
-  'getValue',
-  'size',
-  'length',
-  'isEmpty',
-  'contains',
-  'get',
-  'put',
-  'remove',
-  'add',
-]);
 
 // ── Variable extraction from elements ──────────────────────────────────────
 
@@ -134,139 +78,102 @@ interface ExtractionContext {
   elementName?: string;
 }
 
-/** Extract variables from camunda:FormData extension elements. */
-function extractFromFormData(ext: any, ctx: ExtractionContext): VariableReference[] {
+/** Get a Zeebe extension element by type. */
+function getZeebeExt(bo: any, type: string): any | undefined {
+  return (bo.extensionElements?.values || []).find((e: any) => e.$type === type);
+}
+
+/** Extract variables from zeebe:IoMapping. */
+function extractFromIoMapping(ext: any, ctx: ExtractionContext): VariableReference[] {
   const refs: VariableReference[] = [];
-  for (const field of ext.fields || []) {
-    refs.push({ name: field.id, access: 'write', source: 'formField', ...ctx });
-    if (field.defaultValue) {
-      for (const v of extractExpressionVariables(field.defaultValue)) {
-        refs.push({ name: v, access: 'read', source: 'formField.defaultValue', ...ctx });
+  for (const input of ext.inputParameters || []) {
+    if (input.source) {
+      for (const v of extractFeelVars(input.source)) {
+        refs.push({ name: v, access: 'read', source: 'ioMapping.input.source', ...ctx });
+      }
+    }
+    if (input.target) {
+      refs.push({ name: input.target, access: 'write', source: 'ioMapping.input.target', ...ctx });
+    }
+  }
+  for (const output of ext.outputParameters || []) {
+    if (output.source) {
+      for (const v of extractFeelVars(output.source)) {
+        refs.push({ name: v, access: 'read', source: 'ioMapping.output.source', ...ctx });
+      }
+    }
+    if (output.target) {
+      refs.push({ name: output.target, access: 'write', source: 'ioMapping.output.target', ...ctx });
+    }
+  }
+  return refs;
+}
+
+/** Extract variables from zeebe:AssignmentDefinition. */
+function extractFromAssignment(ext: any, ctx: ExtractionContext): VariableReference[] {
+  const refs: VariableReference[] = [];
+  for (const prop of ['assignee', 'candidateGroups', 'candidateUsers'] as const) {
+    if (ext[prop] && typeof ext[prop] === 'string') {
+      for (const v of extractFeelVars(ext[prop])) {
+        refs.push({ name: v, access: 'read', source: `assignmentDefinition.${prop}`, ...ctx });
       }
     }
   }
   return refs;
 }
 
-/** Extract variables from camunda:InputOutput extension elements. */
-function extractFromInputOutput(ext: any, ctx: ExtractionContext): VariableReference[] {
+/** Extract variables from zeebe:LoopCharacteristics. */
+function extractFromZeebeLoop(ext: any, ctx: ExtractionContext): VariableReference[] {
   const refs: VariableReference[] = [];
-  for (const param of ext.inputParameters || []) {
-    refs.push({ name: param.name, access: 'write', source: 'inputParameter', ...ctx });
-    if (param.value) {
-      for (const v of extractExpressionVariables(param.value)) {
-        refs.push({ name: v, access: 'read', source: 'inputParameter.expression', ...ctx });
-      }
+  if (ext.inputCollection) {
+    for (const v of extractFeelVars(ext.inputCollection)) {
+      refs.push({ name: v, access: 'read', source: 'loop.inputCollection', ...ctx });
     }
   }
-  for (const param of ext.outputParameters || []) {
-    refs.push({ name: param.name, access: 'write', source: 'outputParameter', ...ctx });
-    if (param.value) {
-      for (const v of extractExpressionVariables(param.value)) {
-        refs.push({ name: v, access: 'read', source: 'outputParameter.expression', ...ctx });
-      }
+  if (ext.inputElement) {
+    refs.push({ name: ext.inputElement, access: 'write', source: 'loop.inputElement', ...ctx });
+  }
+  if (ext.outputCollection) {
+    refs.push({ name: ext.outputCollection, access: 'write', source: 'loop.outputCollection', ...ctx });
+  }
+  if (ext.outputElement) {
+    for (const v of extractFeelVars(ext.outputElement)) {
+      refs.push({ name: v, access: 'read', source: 'loop.outputElement', ...ctx });
     }
   }
   return refs;
 }
 
-/** Extract variables from camunda:In call activity mappings. */
-function extractFromCallActivityIn(ext: any, ctx: ExtractionContext): VariableReference[] {
-  const refs: VariableReference[] = [];
-  if (ext.target) {
-    refs.push({ name: ext.target, access: 'write', source: 'callActivity.in', ...ctx });
-  }
-  if (ext.source) {
-    refs.push({ name: ext.source, access: 'read', source: 'callActivity.in', ...ctx });
-  }
-  if (ext.sourceExpression) {
-    for (const v of extractExpressionVariables(ext.sourceExpression)) {
-      refs.push({ name: v, access: 'read', source: 'callActivity.in.expression', ...ctx });
-    }
-  }
-  return refs;
-}
-
-/** Extract variables from camunda:Out call activity mappings. */
-function extractFromCallActivityOut(ext: any, ctx: ExtractionContext): VariableReference[] {
-  const refs: VariableReference[] = [];
-  if (ext.target) {
-    refs.push({ name: ext.target, access: 'write', source: 'callActivity.out', ...ctx });
-  }
-  if (ext.source) {
-    refs.push({ name: ext.source, access: 'read', source: 'callActivity.out', ...ctx });
-  }
-  if (ext.sourceExpression) {
-    for (const v of extractExpressionVariables(ext.sourceExpression)) {
-      refs.push({ name: v, access: 'read', source: 'callActivity.out.expression', ...ctx });
-    }
-  }
-  return refs;
-}
-
-/** Extract variables from extension elements. */
+/** Extract variables from all Zeebe extension elements. */
 function extractFromExtensions(bo: any, ctx: ExtractionContext): VariableReference[] {
   const refs: VariableReference[] = [];
-  const extensionElements = bo.extensionElements?.values || [];
-  for (const ext of extensionElements) {
-    if (ext.$type === 'camunda:FormData') refs.push(...extractFromFormData(ext, ctx));
-    else if (ext.$type === 'camunda:InputOutput') refs.push(...extractFromInputOutput(ext, ctx));
-    else if (ext.$type === 'camunda:In') refs.push(...extractFromCallActivityIn(ext, ctx));
-    else if (ext.$type === 'camunda:Out') refs.push(...extractFromCallActivityOut(ext, ctx));
-  }
-  return refs;
-}
 
-const CAMUNDA_EXPR_PROPS = [
-  { attr: 'camunda:assignee', source: 'assignee' },
-  { attr: 'camunda:candidateGroups', source: 'candidateGroups' },
-  { attr: 'camunda:candidateUsers', source: 'candidateUsers' },
-  { attr: 'camunda:dueDate', source: 'dueDate' },
-  { attr: 'camunda:followUpDate', source: 'followUpDate' },
-  { attr: 'camunda:priority', source: 'priority' },
-];
+  const ioMapping = getZeebeExt(bo, 'zeebe:IoMapping');
+  if (ioMapping) refs.push(...extractFromIoMapping(ioMapping, ctx));
 
-/** Extract variables from Camunda expression properties on tasks. */
-function extractFromCamundaProps(bo: any, ctx: ExtractionContext): VariableReference[] {
-  const refs: VariableReference[] = [];
-  for (const { attr, source } of CAMUNDA_EXPR_PROPS) {
-    const shortKey = attr.replace('camunda:', '');
-    const val = bo.$attrs?.[attr] ?? bo[shortKey];
-    if (val && typeof val === 'string') {
-      for (const v of extractExpressionVariables(val)) {
-        refs.push({ name: v, access: 'read', source, ...ctx });
+  const assignment = getZeebeExt(bo, 'zeebe:AssignmentDefinition');
+  if (assignment) refs.push(...extractFromAssignment(assignment, ctx));
+
+  const script = getZeebeExt(bo, 'zeebe:Script');
+  if (script) {
+    if (script.expression) {
+      for (const v of extractFeelVars(script.expression)) {
+        refs.push({ name: v, access: 'read', source: 'script.expression', ...ctx });
       }
     }
+    if (script.resultVariable) {
+      refs.push({ name: script.resultVariable, access: 'write', source: 'script.resultVariable', ...ctx });
+    }
   }
-  return refs;
-}
 
-/** Extract variables from loop characteristics. */
-function extractFromLoopCharacteristics(
-  loopChars: any,
-  ctx: ExtractionContext
-): VariableReference[] {
-  const refs: VariableReference[] = [];
-  const collection =
-    loopChars.$attrs?.['camunda:collection'] ?? loopChars.collection ?? loopChars.campiCollection;
-  if (collection && typeof collection === 'string') {
-    if (collection.includes('${')) {
-      for (const v of extractExpressionVariables(collection)) {
-        refs.push({ name: v, access: 'read', source: 'loop.collection', ...ctx });
-      }
-    } else {
-      refs.push({ name: collection, access: 'read', source: 'loop.collection', ...ctx });
-    }
+  const calledDecision = getZeebeExt(bo, 'zeebe:CalledDecision');
+  if (calledDecision?.resultVariable) {
+    refs.push({ name: calledDecision.resultVariable, access: 'write', source: 'calledDecision.resultVariable', ...ctx });
   }
-  const elemVar = loopChars.$attrs?.['camunda:elementVariable'] ?? loopChars.elementVariable;
-  if (elemVar && typeof elemVar === 'string') {
-    refs.push({ name: elemVar, access: 'write', source: 'loop.elementVariable', ...ctx });
-  }
-  if (loopChars.completionCondition?.body) {
-    for (const v of extractExpressionVariables(loopChars.completionCondition.body)) {
-      refs.push({ name: v, access: 'read', source: 'loop.completionCondition', ...ctx });
-    }
-  }
+
+  const zeebeLoop = getZeebeExt(bo, 'zeebe:LoopCharacteristics');
+  if (zeebeLoop) refs.push(...extractFromZeebeLoop(zeebeLoop, ctx));
+
   return refs;
 }
 
@@ -282,21 +189,19 @@ function extractFromElement(el: any): VariableReference[] {
   const refs: VariableReference[] = [];
 
   refs.push(...extractFromExtensions(bo, ctx));
-  refs.push(...extractFromCamundaProps(bo, ctx));
 
-  const resultVar = bo.$attrs?.['camunda:resultVariable'] ?? bo.resultVariable;
-  if (resultVar && typeof resultVar === 'string') {
-    refs.push({ name: resultVar, access: 'write', source: 'scriptTask.resultVariable', ...ctx });
-  }
-
+  // Condition expression on sequence flows → read
   if (bo.conditionExpression?.body) {
-    for (const v of extractExpressionVariables(bo.conditionExpression.body)) {
+    for (const v of extractFeelVars(bo.conditionExpression.body)) {
       refs.push({ name: v, access: 'read', source: 'conditionExpression', ...ctx });
     }
   }
 
-  if (bo.loopCharacteristics) {
-    refs.push(...extractFromLoopCharacteristics(bo.loopCharacteristics, ctx));
+  // Standard BPMN loop completion condition
+  if (bo.loopCharacteristics?.completionCondition?.body) {
+    for (const v of extractFeelVars(bo.loopCharacteristics.completionCondition.body)) {
+      refs.push({ name: v, access: 'read', source: 'loop.completionCondition', ...ctx });
+    }
   }
 
   return refs;

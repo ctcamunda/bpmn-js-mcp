@@ -6,7 +6,7 @@
  * - there is exactly one unconditional flow and it is set as the gateway's
  *   default flow.
  *
- * Without this, the Camunda 7 (Operaton) engine will throw at runtime when
+ * Without this, the Zeebe engine will throw at runtime when
  * it encounters a gateway with mixed conditional / unconditional flows and
  * no configured default.
  */

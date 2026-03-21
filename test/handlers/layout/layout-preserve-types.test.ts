@@ -21,10 +21,10 @@ const MIXED_TYPES_BPMN = `<?xml version="1.0" encoding="UTF-8"?>
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="Start_1" name="Begin">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
@@ -32,7 +32,10 @@ const MIXED_TYPES_BPMN = `<?xml version="1.0" encoding="UTF-8"?>
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:serviceTask id="ServiceTask_1" name="Process" camunda:type="external" camunda:topic="work">
+    <bpmn:serviceTask id="ServiceTask_1" name="Process">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="work" />
+      </bpmn:extensionElements>
       <bpmn:incoming>Flow_2</bpmn:incoming>
       <bpmn:outgoing>Flow_3</bpmn:outgoing>
     </bpmn:serviceTask>

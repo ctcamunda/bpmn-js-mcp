@@ -15,6 +15,7 @@ const config = {
     'bpmn-auto-layout',
     'bpmnlint',
     'bpmnlint-plugin-camunda-compat',
+    'zeebe-bpmn-moddle',
     '@resvg/resvg-js',
   ],
   banner: {

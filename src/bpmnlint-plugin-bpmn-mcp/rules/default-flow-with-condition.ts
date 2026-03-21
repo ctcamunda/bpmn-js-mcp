@@ -3,7 +3,7 @@
  *
  * Warns when a sequence flow is marked as the gateway's default flow AND
  * also carries a conditionExpression. The condition on a default flow is
- * ignored at runtime by the Camunda 7 / Operaton engine — having one is
+ * ignored at runtime by the Zeebe engine — having one is
  * misleading and signals a modeling error.
  *
  * Applies to ExclusiveGateway and InclusiveGateway.

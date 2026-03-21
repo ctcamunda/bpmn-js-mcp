@@ -1,12 +1,12 @@
 /**
  * Handler for set_bpmn_call_activity_variables tool.
  *
- * Manages camunda:in and camunda:out variable mappings on CallActivity
- * elements.  These are distinct from camunda:InputParameter /
- * camunda:OutputParameter (which are for tasks and service tasks).
+ * In Camunda 8 (Zeebe), CallActivities use:
+ * - zeebe:CalledElement with processId and propagateAllChildVariables
+ * - zeebe:IoMapping for explicit variable input/output mappings
  *
- * Camunda 7 CallActivities use camunda:in / camunda:out for passing
- * variables between parent and called process.
+ * This handler manages the zeebe:CalledElement extension and optional
+ * I/O mappings for call activity variable passing.
  */
 // @mutating
 
@@ -17,6 +17,7 @@ import {
   requireElement,
   jsonResult,
   syncXml,
+  upsertExtensionElement,
   validateArgs,
   getService,
 } from '../helpers';
@@ -25,63 +26,30 @@ import { appendLintFeedback } from '../../linter';
 export interface SetCallActivityVariablesArgs {
   diagramId: string;
   elementId: string;
-  inMappings?: Array<{
-    source?: string;
-    sourceExpression?: string;
-    target?: string;
-    variables?: 'all';
-    local?: boolean;
-    businessKey?: string;
+  /** Process ID to call */
+  processId?: string;
+  /** Whether to propagate all child variables (default: true) */
+  propagateAllChildVariables?: boolean;
+  /** Input mappings (parent → called process) */
+  inputMappings?: Array<{
+    source: string;
+    target: string;
   }>;
-  outMappings?: Array<{
-    source?: string;
-    sourceExpression?: string;
-    target?: string;
-    variables?: 'all';
-    local?: boolean;
+  /** Output mappings (called process → parent) */
+  outputMappings?: Array<{
+    source: string;
+    target: string;
   }>;
-}
-
-interface MappingSpec {
-  source?: string;
-  sourceExpression?: string;
-  target?: string;
-  variables?: 'all';
-  local?: boolean;
-  businessKey?: string;
-}
-
-/** Create a camunda:In or camunda:Out moddle element from a mapping spec. */
-function createMappingElement(
-  moddle: any,
-  type: 'camunda:In' | 'camunda:Out',
-  mapping: MappingSpec,
-  parent: any
-): any {
-  const attrs: Record<string, any> = {};
-  if (mapping.businessKey != null) {
-    attrs.businessKey = mapping.businessKey;
-  } else if (mapping.variables === 'all') {
-    attrs.variables = 'all';
-  } else {
-    if (mapping.source) attrs.source = mapping.source;
-    if (mapping.sourceExpression) attrs.sourceExpression = mapping.sourceExpression;
-    if (mapping.target) attrs.target = mapping.target;
-  }
-  if (mapping.local) attrs.local = true;
-  const el = moddle.create(type, attrs);
-  el.$parent = parent;
-  return el;
 }
 
 export async function handleSetCallActivityVariables(
   args: SetCallActivityVariablesArgs
 ): Promise<ToolResult> {
   validateArgs(args, ['diagramId', 'elementId']);
-  const { diagramId, elementId, inMappings = [], outMappings = [] } = args;
+  const { diagramId, elementId, processId, propagateAllChildVariables, inputMappings = [], outputMappings = [] } = args;
 
-  if (inMappings.length === 0 && outMappings.length === 0) {
-    throw missingRequiredError(['inMappings', 'outMappings']);
+  if (!processId && inputMappings.length === 0 && outputMappings.length === 0 && propagateAllChildVariables === undefined) {
+    throw missingRequiredError(['processId', 'inputMappings', 'outputMappings']);
   }
 
   const diagram = requireDiagram(diagramId);
@@ -97,42 +65,42 @@ export async function handleSetCallActivityVariables(
     throw typeMismatchError(elementId, elType, ['bpmn:CallActivity']);
   }
 
-  // Ensure extensionElements container exists
-  let extensionElements = bo.extensionElements;
-  if (!extensionElements) {
-    extensionElements = moddle.create('bpmn:ExtensionElements', {
-      values: [],
-    }) as unknown as typeof bo.extensionElements;
-    extensionElements!.$parent = bo;
+  // Set zeebe:CalledElement
+  if (processId !== undefined || propagateAllChildVariables !== undefined) {
+    const attrs: Record<string, any> = {};
+    if (processId) attrs.processId = processId;
+    if (propagateAllChildVariables !== undefined) attrs.propagateAllChildVariables = propagateAllChildVariables;
+    const calledElement = moddle.create('zeebe:CalledElement', attrs);
+    upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:CalledElement', calledElement);
   }
 
-  // Remove existing camunda:in and camunda:out elements
-  extensionElements!.values = (extensionElements!.values || []).filter(
-    (v: any) => v.$type !== 'camunda:In' && v.$type !== 'camunda:Out'
-  );
-
-  // Create camunda:in and camunda:out elements
-  for (const mapping of inMappings) {
-    extensionElements!.values.push(
-      createMappingElement(moddle, 'camunda:In', mapping, extensionElements!)
-    );
+  // Set zeebe:IoMapping if explicit mappings provided
+  if (inputMappings.length > 0 || outputMappings.length > 0) {
+    const ioAttrs: Record<string, any> = {};
+    if (inputMappings.length > 0) {
+      ioAttrs.inputParameters = inputMappings.map((m) =>
+        moddle.create('zeebe:Input', { source: m.source, target: m.target })
+      );
+    }
+    if (outputMappings.length > 0) {
+      ioAttrs.outputParameters = outputMappings.map((m) =>
+        moddle.create('zeebe:Output', { source: m.source, target: m.target })
+      );
+    }
+    const ioMapping = moddle.create('zeebe:IoMapping', ioAttrs);
+    upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:IoMapping', ioMapping);
   }
-  for (const mapping of outMappings) {
-    extensionElements!.values.push(
-      createMappingElement(moddle, 'camunda:Out', mapping, extensionElements!)
-    );
-  }
-
-  modeling.updateProperties(element, { extensionElements });
 
   await syncXml(diagram);
 
   const result = jsonResult({
     success: true,
     elementId,
-    inMappingCount: inMappings.length,
-    outMappingCount: outMappings.length,
-    message: `Set ${inMappings.length} in-mapping(s) and ${outMappings.length} out-mapping(s) on ${elementId}`,
+    processId: processId || undefined,
+    propagateAllChildVariables: propagateAllChildVariables ?? true,
+    inputMappingCount: inputMappings.length,
+    outputMappingCount: outputMappings.length,
+    message: `Configured call activity variables on ${elementId}`,
   });
   return appendLintFeedback(result, diagram);
 }
@@ -140,7 +108,9 @@ export async function handleSetCallActivityVariables(
 export const TOOL_DEFINITION = {
   name: 'set_bpmn_call_activity_variables',
   description:
-    "Set Camunda variable mappings (camunda:in / camunda:out) on a CallActivity element. These pass variables between the parent process and the called process. Distinct from camunda:InputParameter/OutputParameter which are for tasks. Supports source/target variable mapping, sourceExpression, and 'all' variables shorthand.",
+    'Configure a CallActivity element with the called process ID and variable mappings. ' +
+    'Sets zeebe:CalledElement (processId, propagateAllChildVariables) and optionally zeebe:IoMapping ' +
+    'for explicit input/output variable mappings between parent and called process.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -149,97 +119,67 @@ export const TOOL_DEFINITION = {
         type: 'string',
         description: 'The ID of the CallActivity element',
       },
-      inMappings: {
+      processId: {
+        type: 'string',
+        description: 'The BPMN process ID of the process to call',
+      },
+      propagateAllChildVariables: {
+        type: 'boolean',
+        description: 'Whether to propagate all child variables back to the parent (default: true). Set to false when using explicit output mappings.',
+      },
+      inputMappings: {
         type: 'array',
-        description: 'Variable mappings from parent process INTO the called process',
+        description: 'Input variable mappings from parent process into the called process',
         items: {
           type: 'object',
           properties: {
             source: {
               type: 'string',
-              description: 'Source variable name in the parent process',
-            },
-            sourceExpression: {
-              type: 'string',
-              description: "Expression to evaluate (e.g. '${myVar + 1}')",
+              description: 'FEEL expression for the source value (e.g. "=orderId")',
             },
             target: {
               type: 'string',
               description: 'Target variable name in the called process',
             },
-            variables: {
-              type: 'string',
-              enum: ['all'],
-              description: "Set to 'all' to pass all variables",
-            },
-            local: {
-              type: 'boolean',
-              description: 'Whether to use local scope (default: false)',
-            },
-            businessKey: {
-              type: 'string',
-              description:
-                "Expression for the business key to propagate to the called process (e.g. '${execution.processBusinessKey}')",
-            },
           },
+          required: ['source', 'target'],
         },
       },
-      outMappings: {
+      outputMappings: {
         type: 'array',
-        description: 'Variable mappings from the called process back to the parent',
+        description: 'Output variable mappings from the called process back to the parent',
         items: {
           type: 'object',
           properties: {
             source: {
               type: 'string',
-              description: 'Source variable name in the called process',
-            },
-            sourceExpression: {
-              type: 'string',
-              description: "Expression to evaluate (e.g. '${result}')",
+              description: 'FEEL expression for the source value (e.g. "=result")',
             },
             target: {
               type: 'string',
               description: 'Target variable name in the parent process',
             },
-            variables: {
-              type: 'string',
-              enum: ['all'],
-              description: "Set to 'all' to pass all variables back",
-            },
-            local: {
-              type: 'boolean',
-              description: 'Whether to use local scope (default: false)',
-            },
           },
+          required: ['source', 'target'],
         },
       },
     },
     required: ['diagramId', 'elementId'],
     examples: [
       {
-        title: 'Pass specific variables to a called process and get results back',
+        title: 'Call a subprocess with explicit variable mapping',
         value: {
           diagramId: '<diagram-id>',
           elementId: 'CallActivity_ProcessPayment',
-          inMappings: [
-            { source: 'orderId', target: 'orderId' },
-            { source: 'amount', target: 'paymentAmount' },
-            { businessKey: '${execution.processBusinessKey}' },
+          processId: 'payment-process',
+          propagateAllChildVariables: false,
+          inputMappings: [
+            { source: '=orderId', target: 'orderId' },
+            { source: '=amount', target: 'paymentAmount' },
           ],
-          outMappings: [
-            { source: 'paymentStatus', target: 'paymentResult' },
-            { source: 'transactionId', target: 'transactionId' },
+          outputMappings: [
+            { source: '=paymentStatus', target: 'paymentResult' },
           ],
-        },
-      },
-      {
-        title: 'Pass all variables to a subprocess',
-        value: {
-          diagramId: '<diagram-id>',
-          elementId: 'CallActivity_SubProcess',
-          inMappings: [{ variables: 'all' }],
-          outMappings: [{ variables: 'all' }],
         },
       },
     ],

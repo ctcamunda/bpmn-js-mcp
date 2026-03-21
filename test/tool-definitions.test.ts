@@ -14,7 +14,7 @@ describe('tool-definitions', () => {
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
 
   test('exports the expected number of tools', () => {
-    expect(TOOL_DEFINITIONS.length).toBe(30);
+    expect(TOOL_DEFINITIONS.length).toBe(32);
   });
 
   test.each([
@@ -53,6 +53,8 @@ describe('tool-definitions', () => {
     'add_bpmn_element_chain',
     // set_bpmn_connection_waypoints removed — use connect_bpmn_elements with connectionId + waypoints
     'assign_bpmn_elements_to_lane',
+    'generate_bpmn_from_structure',
+    'configure_bpmn_zeebe_extensions',
     // wrap_bpmn_process_in_collaboration removed — use create_bpmn_participant with wrapExisting
     // handoff_bpmn_to_lane removed — use add_bpmn_element with fromElementId + toLaneId
     // convert_bpmn_collaboration_to_lanes removed — use create_bpmn_lanes with mergeFrom
@@ -132,10 +134,10 @@ describe('tool-definitions', () => {
     expect(enumValues).toContain('bpmn:TextAnnotation');
   });
 
-  test('export_bpmn requires diagramId, format, and filePath', () => {
+  test('export_bpmn requires diagramId and format', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'export_bpmn');
     const schema = getSchema(tool);
-    expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'format', 'filePath']));
+    expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'format']));
     expect(schema.properties!.format.enum).toEqual(['xml', 'svg', 'both']);
   });
 
@@ -152,15 +154,15 @@ describe('tool-definitions', () => {
     expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'elementIds']));
   });
 
-  test('set_bpmn_input_output_mapping has inputParameters and outputParameters but not source', () => {
+  test('set_bpmn_input_output_mapping has inputParameters and outputParameters with source/target', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'set_bpmn_input_output_mapping');
     const schema = getSchema(tool);
     expect(schema.properties!.inputParameters).toBeDefined();
     expect(schema.properties!.outputParameters).toBeDefined();
-    // source and sourceExpression should have been removed
+    // Zeebe I/O mappings use source and target
     const inputItemProps = schema.properties!.inputParameters.items.properties;
-    expect(inputItemProps.source).toBeUndefined();
-    expect(inputItemProps.sourceExpression).toBeUndefined();
+    expect(inputItemProps.source).toBeDefined();
+    expect(inputItemProps.target).toBeDefined();
   });
 
   test('set_bpmn_event_definition requires eventDefinitionType', () => {
@@ -169,10 +171,10 @@ describe('tool-definitions', () => {
     expect(schema.required).toContain('eventDefinitionType');
   });
 
-  test('set_bpmn_form_data requires fields', () => {
+  test('set_bpmn_form_data requires diagramId and elementId', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'set_bpmn_form_data');
     const schema = getSchema(tool);
-    expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'elementId', 'fields']));
+    expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'elementId']));
   });
 
   test('align_bpmn_elements has compact and distribute parameters', () => {
@@ -206,11 +208,11 @@ describe('tool-definitions', () => {
     expect(schema.required).toContain('diagramId');
   });
 
-  test('set_bpmn_camunda_listeners has errorDefinitions parameter', () => {
+  test('set_bpmn_camunda_listeners has taskListeners parameter', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'set_bpmn_camunda_listeners');
     const schema = getSchema(tool);
-    expect(schema.properties!.errorDefinitions).toBeDefined();
-    expect(schema.properties!.errorDefinitions.type).toBe('array');
+    expect(schema.properties!.taskListeners).toBeDefined();
+    expect(schema.properties!.taskListeners.type).toBe('array');
   });
 
   test('set_bpmn_loop_characteristics requires loopType', () => {

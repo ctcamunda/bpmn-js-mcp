@@ -90,21 +90,23 @@ function isElExpression(value: string): boolean {
  * Returns null when no role assignment is found.
  *
  * Priority:
- *   1. `camunda:candidateGroups` — first group (preferred: human-readable role)
- *   2. `camunda:assignee` — only when it is NOT an EL expression like "${initiator}"
+ *   1. `zeebe:AssignmentDefinition` candidateGroups — first group (preferred: human-readable role)
+ *   2. `zeebe:AssignmentDefinition` assignee — only when it is NOT a FEEL expression
  */
 function extractPrimaryRoleSuggest(node: any): string | null {
-  // Prefer candidateGroups (role name) over assignee (often an EL expression)
-  const candidateGroups = node.$attrs?.['camunda:candidateGroups'] ?? node.candidateGroups;
-  if (candidateGroups) {
-    const first = String(candidateGroups).split(',')[0]?.trim();
+  const extVals = node.extensionElements?.values || [];
+  const assignment = extVals.find((e: any) => e.$type === 'zeebe:AssignmentDefinition');
+  if (!assignment) return null;
+
+  // Prefer candidateGroups (role name) over assignee
+  if (assignment.candidateGroups) {
+    const first = String(assignment.candidateGroups).split(',')[0]?.trim();
     if (first) return first;
   }
 
-  // Fall back to assignee only when it is a literal name, not an EL expression
-  const assignee = node.$attrs?.['camunda:assignee'] ?? node.assignee;
-  if (assignee && typeof assignee === 'string' && assignee.trim() && !isElExpression(assignee)) {
-    return assignee.trim();
+  // Fall back to assignee only when it is a literal name, not an expression
+  if (assignment.assignee && typeof assignment.assignee === 'string' && assignment.assignee.trim() && !isElExpression(assignment.assignee)) {
+    return assignment.assignee.trim();
   }
 
   return null;
@@ -128,7 +130,7 @@ function collectRoleAssignments(flowNodes: any[]): Map<string, any[]> {
 }
 
 /**
- * Build lane suggestions based on camunda:assignee / camunda:candidateGroups.
+ * Build lane suggestions based on zeebe:AssignmentDefinition roles.
  * Returns suggestions only when at least 2 distinct roles are found.
  */
 function buildRoleSuggestions(
@@ -185,7 +187,7 @@ function buildRoleSuggestions(
       : 'Tasks without explicit assignee or candidateGroup';
     const groupReasoning = allAutomated
       ? `${unassigned.length} automated task(s) (ServiceTask / ScriptTask) — consider assigning them to a "System" or "Automated Tasks" lane.`
-      : `${unassigned.length} element(s) lack a camunda:assignee or camunda:candidateGroups. Consider assigning them to a role.`;
+      : `${unassigned.length} element(s) lack a zeebe:AssignmentDefinition. Consider assigning them to a role.`;
     // Use the group name as the laneMap key so coherence is computed correctly
     ids.forEach((id: string) => laneMap.set(id, groupName));
     suggestions.push({
@@ -476,7 +478,7 @@ export async function handleSuggestLaneOrganization(
 
   const laneMap = new Map<string, string>();
 
-  // Prefer role-based grouping (camunda:assignee / camunda:candidateGroups)
+  // Prefer role-based grouping (zeebe:AssignmentDefinition)
   // when at least 2 distinct roles are found. Fall back to type-based grouping.
   const roleSuggestions = buildRoleSuggestions(flowNodes, laneMap);
   const groupingStrategy = roleSuggestions ? 'role' : 'type';
@@ -961,13 +963,14 @@ function extractPoolRoles(process: any): string[] {
   const roles = new Set<string>();
   const flowElements = process?.flowElements || [];
   for (const el of flowElements) {
-    const assignee = el.$attrs?.['camunda:assignee'] ?? el.assignee;
-    if (assignee && typeof assignee === 'string') {
-      roles.add(assignee.trim());
+    const extVals = el.extensionElements?.values || [];
+    const assignment = extVals.find((e: any) => e.$type === 'zeebe:AssignmentDefinition');
+    if (!assignment) continue;
+    if (assignment.assignee && typeof assignment.assignee === 'string') {
+      roles.add(assignment.assignee.trim());
     }
-    const cg = el.$attrs?.['camunda:candidateGroups'] ?? el.candidateGroups;
-    if (cg) {
-      for (const g of String(cg).split(',')) {
+    if (assignment.candidateGroups) {
+      for (const g of String(assignment.candidateGroups).split(',')) {
         const trimmed = g.trim();
         if (trimmed) roles.add(trimmed);
       }
@@ -1128,7 +1131,7 @@ function computePoolRecommendation(sameScore: number, sepScore: number) {
     );
     reasoning.push(
       'Keep the collaboration pattern. Consider collapsing non-executable pools ' +
-        '(Camunda 7 supports only one executable pool).'
+        '(Camunda 8 supports only one executable pool).'
     );
   } else {
     recommendation = 'mixed';
@@ -1177,7 +1180,7 @@ export async function handleSuggestPoolVsLanes(args: SuggestPoolVsLanesArgs): Pr
     recommendation === 'lanes'
       ? 'Use create_bpmn_lanes (with mergeFrom) to merge pools into a single pool with lanes.'
       : recommendation === 'collaboration'
-        ? 'Keep the collaboration structure. Ensure non-executable pools are collapsed (Camunda 7 pattern).'
+        ? 'Keep the collaboration structure. Ensure non-executable pools are collapsed (Camunda 8 pattern).'
         : 'Review manually. Consider which participants represent external systems (→ collapsed pools) ' +
           'vs internal roles (→ lanes).';
 
@@ -1235,7 +1238,7 @@ export const TOOL_DEFINITION = {
   name: 'analyze_bpmn_lanes',
   description:
     'Analyze lane organization in a BPMN diagram. Three modes: ' +
-    "'suggest' — analyze tasks and suggest optimal lane assignments based on roles (camunda:assignee/candidateGroups) " +
+    "'suggest' — analyze tasks and suggest optimal lane assignments based on roles (zeebe:AssignmentDefinition) " +
     'or element types (human vs automated). Returns structured suggestions with lane names, coherence score, and reasoning. ' +
     "'validate' — check if current lane assignment makes semantic sense by analyzing cross-lane flow frequency, " +
     'zigzag patterns, single-element lanes, and overall coherence. Returns structured issues with fix suggestions. ' +

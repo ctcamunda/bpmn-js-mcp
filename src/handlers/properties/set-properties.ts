@@ -1,8 +1,10 @@
 /**
  * Handler for set_element_properties tool.
  *
- * Automatically sets camunda:type="external" when camunda:topic is provided
- * without an explicit camunda:type value, mirroring Camunda Modeler behavior.
+ * Supports standard BPMN properties and Zeebe (Camunda 8) extensions with
+ * the zeebe: prefix. Properties prefixed with zeebe: are mapped to the
+ * corresponding Zeebe extension elements (TaskDefinition, AssignmentDefinition,
+ * FormDefinition, Properties, etc.).
  *
  * Supports the `default` attribute on gateways by resolving the sequence flow
  * business object from a string ID.
@@ -116,163 +118,135 @@ function handleIsExpandedOnSubProcess(element: any, props: Record<string, any>, 
 }
 
 /**
- * Handle `camunda:retryTimeCycle` — creates/removes camunda:FailedJobRetryTimeCycle
- * extension element. Mutates `camundaProps` in-place (deletes the key after processing).
+ * Handle `zeebe:taskDefinition` — creates/removes zeebe:TaskDefinition
+ * extension element. Mutates `zeebeProps` in-place (deletes the key after processing).
  */
-function handleRetryTimeCycle(element: any, camundaProps: Record<string, any>, diagram: any): void {
-  if (!('camunda:retryTimeCycle' in camundaProps)) return;
+function handleTaskDefinition(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:taskDefinition' in zeebeProps)) return;
 
   const moddle = getService(diagram.modeler, 'moddle');
   const modeling = getService(diagram.modeler, 'modeling');
   const bo = element.businessObject;
-  const cycleValue = camundaProps['camunda:retryTimeCycle'];
-  delete camundaProps['camunda:retryTimeCycle'];
+  const tdDef = zeebeProps['zeebe:taskDefinition'];
+  delete zeebeProps['zeebe:taskDefinition'];
 
-  if (cycleValue != null && cycleValue !== '') {
-    const retryEl = moddle.create('camunda:FailedJobRetryTimeCycle', {
-      body: String(cycleValue),
-    });
-    upsertExtensionElement(
-      moddle,
-      bo,
-      modeling,
-      element,
-      'camunda:FailedJobRetryTimeCycle',
-      retryEl
-    );
-  } else {
-    // Clear: remove existing FailedJobRetryTimeCycle extension element
+  if (tdDef == null || (typeof tdDef === 'object' && !tdDef.type)) {
+    // Remove existing TaskDefinition
     const extensionElements = bo.extensionElements;
     if (extensionElements?.values) {
       extensionElements.values = extensionElements.values.filter(
-        (v: any) => v.$type !== 'camunda:FailedJobRetryTimeCycle'
-      );
-      modeling.updateProperties(element, { extensionElements });
-    }
-  }
-}
-
-/**
- * Handle `camunda:connector` — creates/removes a camunda:Connector extension element
- * with connectorId and optional nested inputOutput.
- *
- * Expected format: `{ connectorId: string, inputOutput?: { inputParameters?: [...], outputParameters?: [...] } }`
- * Set to `null` or empty object to remove.
- * Mutates `camundaProps` in-place (deletes the key after processing).
- */
-function handleConnector(element: any, camundaProps: Record<string, any>, diagram: any): void {
-  if (!('camunda:connector' in camundaProps)) return;
-
-  const moddle = getService(diagram.modeler, 'moddle');
-  const modeling = getService(diagram.modeler, 'modeling');
-  const bo = element.businessObject;
-  const connectorDef = camundaProps['camunda:connector'];
-  delete camundaProps['camunda:connector'];
-
-  if (connectorDef == null || (typeof connectorDef === 'object' && !connectorDef.connectorId)) {
-    // Remove existing Connector
-    const extensionElements = bo.extensionElements;
-    if (extensionElements?.values) {
-      extensionElements.values = extensionElements.values.filter(
-        (v: any) => v.$type !== 'camunda:Connector'
+        (v: any) => v.$type !== 'zeebe:TaskDefinition'
       );
       modeling.updateProperties(element, { extensionElements });
     }
     return;
   }
 
-  const connectorAttrs: Record<string, any> = {
-    connectorId: connectorDef.connectorId,
-  };
-
-  // Build nested InputOutput if provided
-  if (connectorDef.inputOutput) {
-    const ioAttrs: Record<string, any> = {};
-    if (connectorDef.inputOutput.inputParameters) {
-      ioAttrs.inputParameters = connectorDef.inputOutput.inputParameters.map(
-        (p: { name: string; value?: string }) =>
-          moddle.create('camunda:InputParameter', { name: p.name, value: p.value })
-      );
-    }
-    if (connectorDef.inputOutput.outputParameters) {
-      ioAttrs.outputParameters = connectorDef.inputOutput.outputParameters.map(
-        (p: { name: string; value?: string }) =>
-          moddle.create('camunda:OutputParameter', { name: p.name, value: p.value })
-      );
-    }
-    connectorAttrs.inputOutput = moddle.create('camunda:InputOutput', ioAttrs);
+  const attrs: Record<string, any> = {};
+  if (typeof tdDef === 'string') {
+    attrs.type = tdDef;
+  } else {
+    if (tdDef.type) attrs.type = tdDef.type;
+    if (tdDef.retries != null) attrs.retries = String(tdDef.retries);
   }
 
-  const connectorEl = moddle.create('camunda:Connector', connectorAttrs);
-  upsertExtensionElement(moddle, bo, modeling, element, 'camunda:Connector', connectorEl);
+  const tdEl = moddle.create('zeebe:TaskDefinition', attrs);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:TaskDefinition', tdEl);
 }
 
 /**
- * Handle `camunda:field` — creates camunda:Field extension elements on ServiceTaskLike elements.
- *
- * Expected format: array of `{ name: string, stringValue?: string, string?: string, expression?: string }`
- * Set to `null` or empty array to remove all fields.
- * Mutates `camundaProps` in-place (deletes the key after processing).
+ * Handle `zeebe:assignmentDefinition` — creates/removes zeebe:AssignmentDefinition
+ * extension element for user task assignment.
+ * Mutates `zeebeProps` in-place (deletes the key after processing).
  */
-function handleField(element: any, camundaProps: Record<string, any>, diagram: any): void {
-  if (!('camunda:field' in camundaProps)) return;
+function handleAssignmentDefinition(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:assignmentDefinition' in zeebeProps)) return;
 
   const moddle = getService(diagram.modeler, 'moddle');
   const modeling = getService(diagram.modeler, 'modeling');
   const bo = element.businessObject;
-  const fields = camundaProps['camunda:field'];
-  delete camundaProps['camunda:field'];
+  const assignDef = zeebeProps['zeebe:assignmentDefinition'];
+  delete zeebeProps['zeebe:assignmentDefinition'];
 
-  // Ensure extensionElements container exists
-  let extensionElements = bo.extensionElements;
-  if (!extensionElements) {
-    extensionElements = moddle.create('bpmn:ExtensionElements', { values: [] });
-    extensionElements.$parent = bo;
-  }
-
-  // Remove existing Field entries
-  extensionElements.values = (extensionElements.values || []).filter(
-    (v: any) => v.$type !== 'camunda:Field'
-  );
-
-  if (fields && Array.isArray(fields) && fields.length > 0) {
-    for (const f of fields) {
-      const attrs: Record<string, any> = { name: f.name };
-      if (f.stringValue != null) attrs.stringValue = f.stringValue;
-      if (f.string != null) attrs.string = f.string;
-      if (f.expression != null) attrs.expression = f.expression;
-      const fieldEl = moddle.create('camunda:Field', attrs);
-      fieldEl.$parent = extensionElements;
-      extensionElements.values.push(fieldEl);
-    }
-  }
-
-  modeling.updateProperties(element, { extensionElements });
-}
-
-/**
- * Handle `camunda:properties` — creates camunda:Properties extension element with
- * camunda:Property children for generic key-value metadata.
- *
- * Expected format: `Record<string, string>` (key-value pairs).
- * Set to `null` or empty object to remove.
- * Mutates `camundaProps` in-place (deletes the key after processing).
- */
-function handleProperties(element: any, camundaProps: Record<string, any>, diagram: any): void {
-  if (!('camunda:properties' in camundaProps)) return;
-
-  const moddle = getService(diagram.modeler, 'moddle');
-  const modeling = getService(diagram.modeler, 'modeling');
-  const bo = element.businessObject;
-  const propsMap = camundaProps['camunda:properties'];
-  delete camundaProps['camunda:properties'];
-
-  if (propsMap == null || (typeof propsMap === 'object' && Object.keys(propsMap).length === 0)) {
-    // Remove existing Properties
+  if (assignDef == null || (typeof assignDef === 'object' && Object.keys(assignDef).length === 0)) {
     const extensionElements = bo.extensionElements;
     if (extensionElements?.values) {
       extensionElements.values = extensionElements.values.filter(
-        (v: any) => v.$type !== 'camunda:Properties'
+        (v: any) => v.$type !== 'zeebe:AssignmentDefinition'
+      );
+      modeling.updateProperties(element, { extensionElements });
+    }
+    return;
+  }
+
+  const attrs: Record<string, any> = {};
+  if (assignDef.assignee) attrs.assignee = assignDef.assignee;
+  if (assignDef.candidateGroups) attrs.candidateGroups = assignDef.candidateGroups;
+  if (assignDef.candidateUsers) attrs.candidateUsers = assignDef.candidateUsers;
+
+  const adEl = moddle.create('zeebe:AssignmentDefinition', attrs);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:AssignmentDefinition', adEl);
+}
+
+/**
+ * Handle `zeebe:formDefinition` — creates/removes zeebe:FormDefinition
+ * extension element for user task forms.
+ * Mutates `zeebeProps` in-place (deletes the key after processing).
+ */
+function handleFormDefinition(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:formDefinition' in zeebeProps)) return;
+
+  const moddle = getService(diagram.modeler, 'moddle');
+  const modeling = getService(diagram.modeler, 'modeling');
+  const bo = element.businessObject;
+  const formDef = zeebeProps['zeebe:formDefinition'];
+  delete zeebeProps['zeebe:formDefinition'];
+
+  if (formDef == null || (typeof formDef === 'object' && !formDef.formId && !formDef.formKey)) {
+    const extensionElements = bo.extensionElements;
+    if (extensionElements?.values) {
+      extensionElements.values = extensionElements.values.filter(
+        (v: any) => v.$type !== 'zeebe:FormDefinition'
+      );
+      modeling.updateProperties(element, { extensionElements });
+    }
+    return;
+  }
+
+  const attrs: Record<string, any> = {};
+  if (typeof formDef === 'string') {
+    attrs.formId = formDef;
+  } else {
+    if (formDef.formId) attrs.formId = formDef.formId;
+    if (formDef.formKey) attrs.formKey = formDef.formKey;
+  }
+
+  const fdEl = moddle.create('zeebe:FormDefinition', attrs);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:FormDefinition', fdEl);
+}
+
+/**
+ * Handle `zeebe:properties` — creates zeebe:Properties extension element with
+ * zeebe:Property children for generic key-value metadata.
+ *
+ * Expected format: `Record<string, string>` (key-value pairs).
+ * Set to `null` or empty object to remove.
+ * Mutates `zeebeProps` in-place (deletes the key after processing).
+ */
+function handleZeebeProperties(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:properties' in zeebeProps)) return;
+
+  const moddle = getService(diagram.modeler, 'moddle');
+  const modeling = getService(diagram.modeler, 'modeling');
+  const bo = element.businessObject;
+  const propsMap = zeebeProps['zeebe:properties'];
+  delete zeebeProps['zeebe:properties'];
+
+  if (propsMap == null || (typeof propsMap === 'object' && Object.keys(propsMap).length === 0)) {
+    const extensionElements = bo.extensionElements;
+    if (extensionElements?.values) {
+      extensionElements.values = extensionElements.values.filter(
+        (v: any) => v.$type !== 'zeebe:Properties'
       );
       modeling.updateProperties(element, { extensionElements });
     }
@@ -280,39 +254,141 @@ function handleProperties(element: any, camundaProps: Record<string, any>, diagr
   }
 
   const propertyValues = Object.entries(propsMap).map(([name, value]) =>
-    moddle.create('camunda:Property', { name, value: String(value) })
+    moddle.create('zeebe:Property', { name, value: String(value) })
   );
 
-  const propertiesEl = moddle.create('camunda:Properties', { values: propertyValues });
-  upsertExtensionElement(moddle, bo, modeling, element, 'camunda:Properties', propertiesEl);
+  const propertiesEl = moddle.create('zeebe:Properties', { values: propertyValues });
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:Properties', propertiesEl);
+}
+
+/**
+ * Handle `zeebe:calledDecision` — creates/removes zeebe:CalledDecision extension element.
+ * Mutates `zeebeProps` in-place.
+ */
+function handleCalledDecision(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:calledDecision' in zeebeProps)) return;
+
+  const moddle = getService(diagram.modeler, 'moddle');
+  const modeling = getService(diagram.modeler, 'modeling');
+  const bo = element.businessObject;
+  const cdDef = zeebeProps['zeebe:calledDecision'];
+  delete zeebeProps['zeebe:calledDecision'];
+
+  if (cdDef == null) {
+    const extensionElements = bo.extensionElements;
+    if (extensionElements?.values) {
+      extensionElements.values = extensionElements.values.filter(
+        (v: any) => v.$type !== 'zeebe:CalledDecision'
+      );
+      modeling.updateProperties(element, { extensionElements });
+    }
+    return;
+  }
+
+  const attrs: Record<string, any> = {};
+  if (cdDef.decisionId) attrs.decisionId = cdDef.decisionId;
+  if (cdDef.resultVariable) attrs.resultVariable = cdDef.resultVariable;
+
+  const cdEl = moddle.create('zeebe:CalledDecision', attrs);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:CalledDecision', cdEl);
+}
+
+/**
+ * Handle `zeebe:calledElement` — creates/removes zeebe:CalledElement extension element
+ * for call activities.
+ * Mutates `zeebeProps` in-place.
+ */
+function handleCalledElement(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:calledElement' in zeebeProps)) return;
+
+  const moddle = getService(diagram.modeler, 'moddle');
+  const modeling = getService(diagram.modeler, 'modeling');
+  const bo = element.businessObject;
+  const ceDef = zeebeProps['zeebe:calledElement'];
+  delete zeebeProps['zeebe:calledElement'];
+
+  if (ceDef == null) {
+    const extensionElements = bo.extensionElements;
+    if (extensionElements?.values) {
+      extensionElements.values = extensionElements.values.filter(
+        (v: any) => v.$type !== 'zeebe:CalledElement'
+      );
+      modeling.updateProperties(element, { extensionElements });
+    }
+    return;
+  }
+
+  const attrs: Record<string, any> = {};
+  if (typeof ceDef === 'string') {
+    attrs.processId = ceDef;
+  } else {
+    if (ceDef.processId) attrs.processId = ceDef.processId;
+    if (ceDef.propagateAllChildVariables != null) attrs.propagateAllChildVariables = ceDef.propagateAllChildVariables;
+  }
+
+  const ceEl = moddle.create('zeebe:CalledElement', attrs);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:CalledElement', ceEl);
+}
+
+/**
+ * Handle `zeebe:script` — creates/removes zeebe:Script extension element
+ * for FEEL script tasks.
+ * Mutates `zeebeProps` in-place.
+ */
+function handleZeebeScript(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:script' in zeebeProps)) return;
+
+  const moddle = getService(diagram.modeler, 'moddle');
+  const modeling = getService(diagram.modeler, 'modeling');
+  const bo = element.businessObject;
+  const scriptDef = zeebeProps['zeebe:script'];
+  delete zeebeProps['zeebe:script'];
+
+  if (scriptDef == null) {
+    const extensionElements = bo.extensionElements;
+    if (extensionElements?.values) {
+      extensionElements.values = extensionElements.values.filter(
+        (v: any) => v.$type !== 'zeebe:Script'
+      );
+      modeling.updateProperties(element, { extensionElements });
+    }
+    return;
+  }
+
+  const attrs: Record<string, any> = {};
+  if (scriptDef.expression) attrs.expression = scriptDef.expression;
+  if (scriptDef.resultVariable) attrs.resultVariable = scriptDef.resultVariable;
+
+  const sEl = moddle.create('zeebe:Script', attrs);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:Script', sEl);
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────
 
 /**
- * Apply standard and camunda properties to an element.
- * Handles special cases: retryTimeCycle, connector, field, properties,
- * script properties, documentation, and empty-string camunda attribute skipping.
- * Returns the (possibly updated) camundaProps for hint building.
+ * Apply standard and Zeebe properties to an element.
+ * Handles special cases: task definition, assignment definition, form definition,
+ * called decision, called element, script, zeebe properties,
+ * script properties, documentation, and empty-string zeebe attribute skipping.
  */
 function applyPropsToElement(
   element: any,
   standardProps: Record<string, any>,
-  camundaProps: Record<string, any>,
+  zeebeProps: Record<string, any>,
   diagram: ReturnType<typeof requireDiagram>
 ): void {
   const modeling = getService(diagram.modeler, 'modeling');
 
-  // Handle `camunda:retryTimeCycle` — creates camunda:FailedJobRetryTimeCycle extension element
-  handleRetryTimeCycle(element, camundaProps, diagram);
-  // Handle `camunda:connector` — creates camunda:Connector extension element
-  handleConnector(element, camundaProps, diagram);
-  // Handle `camunda:field` — creates camunda:Field extension elements
-  handleField(element, camundaProps, diagram);
-  // Handle `camunda:properties` — creates camunda:Properties extension element
-  handleProperties(element, camundaProps, diagram);
-  // Handle script-related properties (scriptFormat, script, camunda:resource) on ScriptTasks
-  handleScriptProperties(element, standardProps, camundaProps, diagram);
+  // Handle Zeebe extension elements
+  handleTaskDefinition(element, zeebeProps, diagram);
+  handleAssignmentDefinition(element, zeebeProps, diagram);
+  handleFormDefinition(element, zeebeProps, diagram);
+  handleZeebeProperties(element, zeebeProps, diagram);
+  handleCalledDecision(element, zeebeProps, diagram);
+  handleCalledElement(element, zeebeProps, diagram);
+  handleZeebeScript(element, zeebeProps, diagram);
+  // Handle script-related properties (scriptFormat, script) on ScriptTasks
+  handleScriptProperties(element, standardProps, zeebeProps, diagram);
 
   // Handle `documentation` — creates/updates bpmn:documentation child element
   if ('documentation' in standardProps) {
@@ -335,14 +411,14 @@ function applyPropsToElement(
     modeling.updateProperties(element, standardProps);
   }
 
-  // Strip empty-string camunda extension attributes — they are misleading
-  // in the XML (e.g. camunda:dueDate="") and should simply be omitted.
-  const nonEmptyCamundaProps: Record<string, any> = {};
-  for (const [key, value] of Object.entries(camundaProps)) {
-    if (value !== '') nonEmptyCamundaProps[key] = value;
+  // Strip empty-string zeebe extension attributes — they are misleading
+  // in the XML and should simply be omitted.
+  const nonEmptyZeebeProps: Record<string, any> = {};
+  for (const [key, value] of Object.entries(zeebeProps)) {
+    if (value !== '') nonEmptyZeebeProps[key] = value;
   }
-  if (Object.keys(nonEmptyCamundaProps).length > 0) {
-    modeling.updateProperties(element, nonEmptyCamundaProps);
+  if (Object.keys(nonEmptyZeebeProps).length > 0) {
+    modeling.updateProperties(element, nonEmptyZeebeProps);
   }
 }
 
@@ -379,25 +455,20 @@ export async function handleSetProperties(args: SetPropertiesArgs): Promise<Tool
   element = handleIsExpandedOnSubProcess(element, props, diagram);
 
   const standardProps: Record<string, any> = {};
-  const camundaProps: Record<string, any> = {};
+  const zeebeProps: Record<string, any> = {};
   for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith('camunda:')) camundaProps[key] = value;
+    if (key.startsWith('zeebe:')) zeebeProps[key] = value;
     else standardProps[key] = value;
-  }
-
-  // Auto-set camunda:type="external" when camunda:topic is provided
-  if (camundaProps['camunda:topic'] && !camundaProps['camunda:type']) {
-    camundaProps['camunda:type'] = 'external';
   }
 
   handleDefaultOnGateway(element, standardProps, elementRegistry, modeling);
   handleConditionExpression(standardProps, getService(diagram.modeler, 'moddle'));
 
-  applyPropsToElement(element, standardProps, camundaProps, diagram);
+  applyPropsToElement(element, standardProps, zeebeProps, diagram);
 
   await syncXml(diagram);
 
-  const hints = buildPropertyHints(props, camundaProps, element);
+  const hints = buildPropertyHints(props, zeebeProps, element);
   const result = jsonResult({
     success: true,
     elementId: element.id,
@@ -417,12 +488,12 @@ const EXAMPLE_DIAGRAM_ID = '<diagram-id>';
 export const TOOL_DEFINITION = {
   name: 'set_bpmn_element_properties',
   description:
-    'Set BPMN or Camunda extension properties on an element. ' +
+    'Set BPMN or Zeebe (Camunda 8) extension properties on an element. ' +
     'Supports standard properties (name, isExecutable, documentation, default, conditionExpression) ' +
-    'and Camunda extensions with camunda: prefix (e.g. camunda:assignee, camunda:class, camunda:type, camunda:topic). ' +
-    'Also handles: scriptFormat/script on ScriptTask, camunda:connector, camunda:field, camunda:properties, ' +
-    'camunda:retryTimeCycle, isExpanded on SubProcess, and cancelActivity on BoundaryEvent (false = non-interrupting). ' +
-    'See bpmn://guides/element-properties for the full property catalog by element type. ' +
+    'and Zeebe extensions via structured objects: zeebe:taskDefinition, zeebe:assignmentDefinition, ' +
+    'zeebe:formDefinition, zeebe:calledDecision, zeebe:calledElement, zeebe:script, zeebe:properties. ' +
+    'Also handles: scriptFormat/script on ScriptTask, isExpanded on SubProcess, and cancelActivity on BoundaryEvent. ' +
+    'For I/O mappings, use set_bpmn_input_output_mapping. ' +
     'For loop characteristics, use set_bpmn_loop_characteristics. ' +
     'Supports optional elementType to replace the element type (e.g. bpmn:Task → bpmn:UserTask) — ' +
     'equivalent to the former replace_bpmn_element tool.',
@@ -437,15 +508,15 @@ export const TOOL_DEFINITION = {
       properties: {
         type: 'object',
         description:
-          "Key-value pairs of properties to set. Use 'camunda:' prefix for Camunda extension attributes (e.g. { 'camunda:assignee': 'john', 'camunda:formKey': 'embedded:app:forms/task.html' }).",
+          'Key-value pairs of properties to set. Use zeebe: prefix for Zeebe extension elements ' +
+          '(e.g. { "zeebe:taskDefinition": { "type": "my-worker", "retries": "3" } }).',
         additionalProperties: true,
       },
       elementType: {
         type: 'string',
         description:
           'Optional element type to replace the element with (e.g. "bpmn:UserTask", "bpmn:ServiceTask"). ' +
-          'When provided, replaces the element type before setting properties. ' +
-          'Equivalent to the former replace_bpmn_element tool.',
+          'When provided, replaces the element type before setting properties.',
         enum: [
           'bpmn:Task',
           'bpmn:UserTask',
@@ -471,24 +542,22 @@ export const TOOL_DEFINITION = {
     required: ['diagramId', 'elementId', 'properties'],
     examples: [
       {
-        title: 'Configure an external service task',
+        title: 'Configure a service task with Zeebe task definition',
         value: {
           diagramId: EXAMPLE_DIAGRAM_ID,
           elementId: 'ServiceTask_ProcessPayment',
           properties: {
-            'camunda:type': 'external',
-            'camunda:topic': 'process-payment',
+            'zeebe:taskDefinition': { type: 'process-payment', retries: '3' },
           },
         },
       },
       {
-        title: 'Assign a user task to a candidate group',
+        title: 'Assign a user task',
         value: {
           diagramId: EXAMPLE_DIAGRAM_ID,
           elementId: 'UserTask_ReviewOrder',
           properties: {
-            'camunda:candidateGroups': 'managers',
-            'camunda:dueDate': '${dateTime().plusDays(3).toDate()}',
+            'zeebe:assignmentDefinition': { assignee: '=assigneeEmail', candidateGroups: 'managers' },
           },
         },
       },
@@ -499,7 +568,7 @@ export const TOOL_DEFINITION = {
           elementId: 'Flow_Approved',
           properties: {
             name: 'Yes',
-            conditionExpression: '${approved == true}',
+            conditionExpression: '=approved',
           },
         },
       },
@@ -514,14 +583,12 @@ export const TOOL_DEFINITION = {
         },
       },
       {
-        title: 'Set inline Groovy script on a ScriptTask',
+        title: 'Set a FEEL script on a ScriptTask',
         value: {
           diagramId: EXAMPLE_DIAGRAM_ID,
           elementId: 'ScriptTask_CalcTotal',
           properties: {
-            scriptFormat: 'groovy',
-            script: 'def total = orderItems.sum { it.price * it.quantity }\ntotal',
-            'camunda:resultVariable': 'orderTotal',
+            'zeebe:script': { expression: '=sum(orderItems.price * orderItems.quantity)', resultVariable: 'orderTotal' },
           },
         },
       },

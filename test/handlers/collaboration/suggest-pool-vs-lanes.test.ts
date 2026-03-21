@@ -79,7 +79,7 @@ describe('suggest_bpmn_pool_vs_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:candidateGroups': 'org.acme.reviewers' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'org.acme.reviewers' } },
     });
 
     const task2 = parseResult(
@@ -94,7 +94,7 @@ describe('suggest_bpmn_pool_vs_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task2,
-      properties: { 'camunda:candidateGroups': 'org.acme.approvers' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'org.acme.approvers' } },
     });
 
     const result = parseResult(await handleSuggestPoolVsLanes({ diagramId }));

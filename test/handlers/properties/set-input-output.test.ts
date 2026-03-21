@@ -18,10 +18,10 @@ describe('set_bpmn_input_output_mapping', () => {
         diagramId,
         elementId: taskId,
         inputParameters: [
-          { name: 'orderId', value: '123' },
-          { name: 'amount', value: '${order.total}' },
+          { source: '=orderId', target: 'orderId' },
+          { source: '=order.total', target: 'amount' },
         ],
-        outputParameters: [{ name: 'result', value: 'ok' }],
+        outputParameters: [{ source: '=result', target: 'result' }],
       })
     );
     expect(res.success).toBe(true);
@@ -31,7 +31,7 @@ describe('set_bpmn_input_output_mapping', () => {
     // Verify it shows up in XML
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:inputOutput');
+    expect(xml).toContain('zeebe:ioMapping');
     expect(xml).toContain('orderId');
   });
 
@@ -44,23 +44,23 @@ describe('set_bpmn_input_output_mapping', () => {
     await handleSetInputOutput({
       diagramId,
       elementId: taskId,
-      inputParameters: [{ name: 'var1', value: 'val1' }],
+      inputParameters: [{ source: '=val1', target: 'var1' }],
     });
 
     const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
     expect(props.extensionElements).toBeDefined();
-    const io = props.extensionElements.find((e: any) => e.type === 'camunda:InputOutput');
+    const io = props.extensionElements.find((e: any) => e.type === 'zeebe:IoMapping');
     expect(io).toBeDefined();
-    expect(io.inputParameters[0].name).toBe('var1');
+    expect(io.inputParameters[0].target).toBe('var1');
   });
 });
 
-describe('set_bpmn_input_output_mapping — value expressions', () => {
+describe('set_bpmn_input_output_mapping — FEEL expressions', () => {
   beforeEach(() => {
     clearDiagrams();
   });
 
-  test('produces correct XML for expression values', async () => {
+  test('produces correct XML for FEEL expressions', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
       name: 'Expr Test',
@@ -69,31 +69,32 @@ describe('set_bpmn_input_output_mapping — value expressions', () => {
     await handleSetInputOutput({
       diagramId,
       elementId: taskId,
-      inputParameters: [{ name: 'myInput', value: '${processVariable}' }],
+      inputParameters: [{ source: '=processVariable', target: 'myInput' }],
     });
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    // Should produce body text content, not a source attribute
-    expect(xml).toContain('${processVariable}');
-    expect(xml).not.toMatch(/source="/);
+    expect(xml).toContain('zeebe:input');
+    expect(xml).toContain('source');
+    expect(xml).toContain('target');
   });
 
-  test('does not accept source or sourceExpression attributes', async () => {
+  test('round-trips via get_element_properties', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
       name: 'No Source',
     });
 
-    // Even if someone passes source-like data as value, it should just set value
     await handleSetInputOutput({
       diagramId,
       elementId: taskId,
-      inputParameters: [{ name: 'var1', value: 'static' }],
+      inputParameters: [{ source: '=static', target: 'var1' }],
     });
 
     const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const io = props.extensionElements.find((e: any) => e.type === 'camunda:InputOutput');
-    expect(io.inputParameters[0].value).toBe('static');
+    const io = props.extensionElements.find((e: any) => e.type === 'zeebe:IoMapping');
+    expect(io).toBeDefined();
+    expect(io.inputParameters[0].source).toBe('=static');
+    expect(io.inputParameters[0].target).toBe('var1');
   });
 });

@@ -34,7 +34,6 @@ describe('set_bpmn_event_definition', () => {
     );
     expect(res.success).toBe(true);
 
-    // Verify via XML
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
     expect(xml).toContain('errorEventDefinition');
@@ -74,7 +73,7 @@ describe('set_bpmn_event_definition', () => {
     ).rejects.toThrow(/operation requires/);
   });
 
-  test('sets camunda:async on SignalEventDefinition', async () => {
+  test('sets signal event definition', async () => {
     const diagramId = await createDiagram();
     const eventId = await addElement(diagramId, 'bpmn:IntermediateThrowEvent', {
       name: 'Signal Throw',
@@ -88,86 +87,61 @@ describe('set_bpmn_event_definition', () => {
         elementId: eventId,
         eventDefinitionType: 'bpmn:SignalEventDefinition',
         signalRef: { id: 'Signal_1', name: 'MySignal' },
-        properties: { async: true },
       })
     );
     expect(res.success).toBe(true);
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:async="true"');
     expect(xml).toContain('signalEventDefinition');
   });
 
-  test('sets camunda:in variable mappings on SignalEventDefinition', async () => {
-    const diagramId = await createDiagram();
-    const eventId = await addElement(diagramId, 'bpmn:IntermediateThrowEvent', {
-      name: 'Send Signal',
-      x: 200,
-      y: 100,
-    });
-
-    const res = parseResult(
-      await handleSetEventDefinition({
-        diagramId,
-        elementId: eventId,
-        eventDefinitionType: 'bpmn:SignalEventDefinition',
-        signalRef: { id: 'Signal_Order', name: 'OrderCompleted' },
-        inMappings: [
-          { source: 'orderId', target: 'orderId' },
-          { source: 'customerName', target: 'customerName' },
-        ],
-      })
-    );
-    expect(res.success).toBe(true);
-
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('camunda:in');
-    expect(xml).toContain('source="orderId"');
-    expect(xml).toContain('target="customerName"');
-  });
-
-  test('sets camunda:in with variables="all" on SignalEventDefinition', async () => {
-    const diagramId = await createDiagram();
-    const eventId = await addElement(diagramId, 'bpmn:IntermediateThrowEvent', {
-      name: 'Broadcast Signal',
-      x: 200,
-      y: 100,
-    });
-
-    const res = parseResult(
-      await handleSetEventDefinition({
-        diagramId,
-        elementId: eventId,
-        eventDefinitionType: 'bpmn:SignalEventDefinition',
-        signalRef: { id: 'Signal_Broadcast', name: 'BroadcastAll' },
-        inMappings: [{ variables: 'all' }],
-      })
-    );
-    expect(res.success).toBe(true);
-
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('camunda:in');
-    expect(xml).toContain('variables="all"');
-  });
-
-  test('rejects inMappings on non-Signal event definitions', async () => {
+  test('sets message event definition on catch event', async () => {
     const diagramId = await createDiagram();
     const eventId = await addElement(diagramId, 'bpmn:IntermediateCatchEvent', {
+      name: 'Wait for Message',
       x: 200,
       y: 100,
     });
 
-    await expect(
-      handleSetEventDefinition({
+    const res = parseResult(
+      await handleSetEventDefinition({
         diagramId,
         elementId: eventId,
-        eventDefinitionType: 'bpmn:TimerEventDefinition',
-        properties: { timeDuration: 'PT1H' },
-        inMappings: [{ source: 'foo', target: 'bar' }],
+        eventDefinitionType: 'bpmn:MessageEventDefinition',
+        messageRef: { id: 'Message_Order', name: 'OrderCompleted' },
       })
-    ).rejects.toThrow(/operation requires.*bpmn:SignalEventDefinition/);
+    );
+    expect(res.success).toBe(true);
+
+    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
+      .text;
+    expect(xml).toContain('messageEventDefinition');
+  });
+
+  test('sets escalation event definition', async () => {
+    const diagramId = await createDiagram();
+    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
+      name: 'Task',
+      x: 200,
+      y: 200,
+    });
+    const boundaryId = await addElement(diagramId, 'bpmn:BoundaryEvent', {
+      hostElementId: taskId,
+    });
+
+    const res = parseResult(
+      await handleSetEventDefinition({
+        diagramId,
+        elementId: boundaryId,
+        eventDefinitionType: 'bpmn:EscalationEventDefinition',
+        escalationRef: { id: 'Escalation_1', name: 'HighPriority', escalationCode: 'HIGH' },
+      })
+    );
+    expect(res.success).toBe(true);
+
+    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
+      .text;
+    expect(xml).toContain('escalationEventDefinition');
   });
 });

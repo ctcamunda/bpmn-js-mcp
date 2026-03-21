@@ -197,7 +197,7 @@ describe('Issue G — compensation handlers should not appear in "Automated Task
     await handleSetProperties({
       diagramId,
       elementId: humanTask,
-      properties: { 'camunda:candidateGroups': 'finance' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'finance' } },
     });
 
     // One regular service task (should appear in "Automated Tasks")
@@ -259,7 +259,7 @@ describe('Issue G — compensation handlers should not appear in "Automated Task
     await handleSetProperties({
       diagramId,
       elementId: humanTask,
-      properties: { 'camunda:candidateGroups': 'customer' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'customer' } },
     });
 
     // Regular service task — no role — goes into "Automated Tasks"

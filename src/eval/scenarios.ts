@@ -84,11 +84,11 @@ function s01Linear(): EvalScenario {
       const diagramId = await createDiagram('Eval S01 Linear');
       const start = await add(diagramId, START_EVENT, 'Start');
       const t1 = await add(diagramId, USER_TASK, 'Collect Info', { afterElementId: start });
-      await setProps(diagramId, t1, { 'camunda:assignee': 'user' });
+      await setProps(diagramId, t1, { 'zeebe:assignmentDefinition': { assignee: 'user' } });
       const t2 = await add(diagramId, SERVICE_TASK, 'Validate', { afterElementId: t1 });
-      await setProps(diagramId, t2, { 'camunda:type': 'external', 'camunda:topic': 'validate' });
+      await setProps(diagramId, t2, { 'zeebe:taskDefinition': { type: 'validate' } });
       const t3 = await add(diagramId, USER_TASK, 'Approve', { afterElementId: t2 });
-      await setProps(diagramId, t3, { 'camunda:assignee': 'approver' });
+      await setProps(diagramId, t3, { 'zeebe:assignmentDefinition': { assignee: 'approver' } });
       const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: t3 });
 
       await connect(diagramId, start, t1);
@@ -112,16 +112,16 @@ function s02Exclusive(): EvalScenario {
       const start = await add(diagramId, START_EVENT, 'Start');
       const gw = await add(diagramId, EXCLUSIVE_GATEWAY, 'Approved?', { afterElementId: start });
       const yes = await add(diagramId, USER_TASK, 'Process Approval', { afterElementId: gw });
-      await setProps(diagramId, yes, { 'camunda:assignee': 'user' });
+      await setProps(diagramId, yes, { 'zeebe:assignmentDefinition': { assignee: 'user' } });
       const no = await add(diagramId, USER_TASK, 'Handle Rejection', { afterElementId: gw });
-      await setProps(diagramId, no, { 'camunda:assignee': 'user' });
+      await setProps(diagramId, no, { 'zeebe:assignmentDefinition': { assignee: 'user' } });
       const merge = await add(diagramId, EXCLUSIVE_GATEWAY, 'Merge', { afterElementId: yes });
       const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: merge });
 
       await connect(diagramId, start, gw);
       await connect(diagramId, gw, yes, {
         label: 'Yes',
-        conditionExpression: '${approved == true}',
+        conditionExpression: '= approved = true',
       });
       await connect(diagramId, gw, no, { label: 'No', isDefault: true });
       await connect(diagramId, yes, merge);
@@ -144,11 +144,11 @@ function s03Parallel(): EvalScenario {
       const start = await add(diagramId, START_EVENT, 'Start');
       const split = await add(diagramId, PARALLEL_GATEWAY, 'Split', { afterElementId: start });
       const b1 = await add(diagramId, USER_TASK, 'Complete Step A', { afterElementId: split });
-      await setProps(diagramId, b1, { 'camunda:assignee': 'user' });
+      await setProps(diagramId, b1, { 'zeebe:assignmentDefinition': { assignee: 'user' } });
       const b2 = await add(diagramId, SERVICE_TASK, 'Validate Data', { afterElementId: split });
-      await setProps(diagramId, b2, { 'camunda:type': 'external', 'camunda:topic': 'branch-2' });
+      await setProps(diagramId, b2, { 'zeebe:taskDefinition': { type: 'branch-2' } });
       const b3 = await add(diagramId, USER_TASK, 'Send Notification', { afterElementId: split });
-      await setProps(diagramId, b3, { 'camunda:assignee': 'user' });
+      await setProps(diagramId, b3, { 'zeebe:assignmentDefinition': { assignee: 'user' } });
       const join = await add(diagramId, PARALLEL_GATEWAY, 'Join', { afterElementId: b1 });
       const end = await add(diagramId, END_EVENT, 'Done', { afterElementId: join });
 
@@ -194,13 +194,13 @@ function s06Lanes(): EvalScenario {
         laneId: laneA,
         afterElementId: start,
       });
-      await setProps(diagramId, taskA, { 'camunda:assignee': 'lane-a-user' });
+      await setProps(diagramId, taskA, { 'zeebe:assignmentDefinition': { assignee: 'lane-a-user' } });
       const taskB = await add(diagramId, USER_TASK, 'Handle Follow-up', {
         participantId: participant,
         laneId: laneB,
         afterElementId: taskA,
       });
-      await setProps(diagramId, taskB, { 'camunda:assignee': 'lane-b-user' });
+      await setProps(diagramId, taskB, { 'zeebe:assignmentDefinition': { assignee: 'lane-b-user' } });
       const end = await add(diagramId, END_EVENT, 'Done', {
         participantId: participant,
         laneId: laneB,
@@ -222,7 +222,7 @@ export function getEvalScenarios(): EvalScenario[] {
     s01Linear(),
     s02Exclusive(),
     s03Parallel(),
-    s04Camunda7Executable(),
+    s04ZeebeExecutable(),
     s05TimerBoundary(),
     s06Lanes(),
     s07ThreeLanes(),
@@ -235,33 +235,32 @@ export function getEvalScenarios(): EvalScenario[] {
 }
 
 /**
- * S04: Camunda 7 executable process with proper implementations.
+ * S04: Camunda 8 (Zeebe) executable process with proper implementations.
  *
- * Tests Camunda 7 executability requirements:
- * - Service task with external task topic
- * - User task with assignee
+ * Tests Camunda 8 executability requirements:
+ * - Service task with zeebe:TaskDefinition type
+ * - User task with zeebe:AssignmentDefinition assignee
  * - Proper gateway conditions
  */
-function s04Camunda7Executable(): EvalScenario {
+function s04ZeebeExecutable(): EvalScenario {
   return {
     scenarioId: 'S04',
-    name: 'Camunda 7 executable process',
+    name: 'Camunda 8 executable process',
     build: async () => {
       clearDiagrams();
-      const diagramId = await createDiagram('Eval S04 Camunda7');
+      const diagramId = await createDiagram('Eval S04 Zeebe');
       const start = await add(diagramId, START_EVENT, 'Order Received');
       const validate = await add(diagramId, SERVICE_TASK, 'Validate Order', {
         afterElementId: start,
       });
-      // Set external task topic for Camunda 7
+      // Set Zeebe task definition type
       await setProps(diagramId, validate, {
-        'camunda:type': 'external',
-        'camunda:topic': 'validate-order',
+        'zeebe:taskDefinition': { type: 'validate-order' },
       });
 
       const review = await add(diagramId, USER_TASK, 'Review Order', { afterElementId: validate });
-      // Set assignee for Camunda 7
-      await setProps(diagramId, review, { 'camunda:assignee': 'sales-team' });
+      // Set Zeebe assignee
+      await setProps(diagramId, review, { 'zeebe:assignmentDefinition': { assignee: 'sales-team' } });
 
       const decision = await add(diagramId, EXCLUSIVE_GATEWAY, 'Approved?', {
         afterElementId: review,
@@ -270,16 +269,14 @@ function s04Camunda7Executable(): EvalScenario {
         afterElementId: decision,
       });
       await setProps(diagramId, approve, {
-        'camunda:type': 'external',
-        'camunda:topic': 'process-order',
+        'zeebe:taskDefinition': { type: 'process-order' },
       });
 
       const reject = await add(diagramId, SERVICE_TASK, 'Send Rejection', {
         afterElementId: decision,
       });
       await setProps(diagramId, reject, {
-        'camunda:type': 'external',
-        'camunda:topic': 'send-rejection',
+        'zeebe:taskDefinition': { type: 'send-rejection' },
       });
 
       const merge = await add(diagramId, EXCLUSIVE_GATEWAY, 'Merge', { afterElementId: approve });
@@ -290,7 +287,7 @@ function s04Camunda7Executable(): EvalScenario {
       await connect(diagramId, review, decision);
       await connect(diagramId, decision, approve, {
         label: 'Yes',
-        conditionExpression: '${approved == true}',
+        conditionExpression: '= approved = true',
       });
       await connect(diagramId, decision, reject, { label: 'No', isDefault: true });
       await connect(diagramId, approve, merge);
@@ -320,7 +317,7 @@ function s05TimerBoundary(): EvalScenario {
       const diagramId = await createDiagram('Eval S05 Timer');
       const start = await add(diagramId, START_EVENT, 'Start');
       const task = await add(diagramId, USER_TASK, 'Wait for Approval', { afterElementId: start });
-      await setProps(diagramId, task, { 'camunda:assignee': 'manager' });
+      await setProps(diagramId, task, { 'zeebe:assignmentDefinition': { assignee: 'manager' } });
 
       // Add timer boundary event
       const timer = await add(diagramId, BOUNDARY_EVENT, 'Timeout', { hostElementId: task });
@@ -329,8 +326,7 @@ function s05TimerBoundary(): EvalScenario {
       const normalEnd = await add(diagramId, END_EVENT, 'Approved', { afterElementId: task });
       const escalate = await add(diagramId, SERVICE_TASK, 'Escalate', { afterElementId: timer });
       await setProps(diagramId, escalate, {
-        'camunda:type': 'external',
-        'camunda:topic': 'escalate-approval',
+        'zeebe:taskDefinition': { type: 'escalate-approval' },
       });
       const escalateEnd = await add(diagramId, END_EVENT, 'Escalated', {
         afterElementId: escalate,
@@ -384,7 +380,7 @@ function s07ThreeLanes(): EvalScenario {
         laneId: laneC,
         afterElementId: start,
       });
-      await setProps(diagramId, submitOrder, { 'camunda:assignee': 'customer' });
+      await setProps(diagramId, submitOrder, { 'zeebe:assignmentDefinition': { assignee: 'customer' } });
 
       // Approver lane
       const reviewOrder = await add(diagramId, USER_TASK, 'Review Order', {
@@ -392,11 +388,11 @@ function s07ThreeLanes(): EvalScenario {
         laneId: laneA,
         afterElementId: submitOrder,
       });
-      await setProps(diagramId, reviewOrder, { 'camunda:assignee': 'approver' });
+      await setProps(diagramId, reviewOrder, { 'zeebe:assignmentDefinition': { assignee: 'approver' } });
       await handleSetFormData({
         diagramId,
         elementId: reviewOrder,
-        fields: [{ id: 'approved', label: 'Approved', type: 'boolean' }],
+        formId: 'review-order-form',
       });
       const decision = await add(diagramId, EXCLUSIVE_GATEWAY, 'Approved?', {
         participantId: participant,
@@ -407,7 +403,7 @@ function s07ThreeLanes(): EvalScenario {
         participantId: participant,
         laneId: laneA,
       });
-      await setProps(diagramId, notifyReject, { 'camunda:assignee': 'approver' });
+      await setProps(diagramId, notifyReject, { 'zeebe:assignmentDefinition': { assignee: 'approver' } });
       const rejectedEnd = await add(diagramId, END_EVENT, 'Rejected', {
         participantId: participant,
         laneId: laneA,
@@ -420,8 +416,7 @@ function s07ThreeLanes(): EvalScenario {
         laneId: laneF,
       });
       await setProps(diagramId, processPayment, {
-        'camunda:type': 'external',
-        'camunda:topic': 'process-payment',
+        'zeebe:taskDefinition': { type: 'process-payment' },
       });
       const orderDone = await add(diagramId, END_EVENT, 'Order Complete', {
         participantId: participant,
@@ -441,8 +436,7 @@ function s07ThreeLanes(): EvalScenario {
         afterElementId: paymentError,
       });
       await setProps(diagramId, logError, {
-        'camunda:type': 'external',
-        'camunda:topic': 'log-payment-error',
+        'zeebe:taskDefinition': { type: 'log-payment-error' },
       });
       const errorEnd = await add(diagramId, END_EVENT, 'Payment Error', {
         participantId: participant,
@@ -455,7 +449,7 @@ function s07ThreeLanes(): EvalScenario {
       await connect(diagramId, reviewOrder, decision);
       await connect(diagramId, decision, processPayment, {
         label: 'Yes',
-        conditionExpression: '${approved}',
+        conditionExpression: '= approved',
       });
       await connect(diagramId, decision, notifyReject, { label: 'No', isDefault: true });
       await connect(diagramId, notifyReject, rejectedEnd);
@@ -492,7 +486,7 @@ function s08TwoBoundaryEvents(): EvalScenario {
       const processClaim = await add(diagramId, USER_TASK, 'Process Insurance Claim', {
         afterElementId: start,
       });
-      await setProps(diagramId, processClaim, { 'camunda:assignee': 'claims-agent' });
+      await setProps(diagramId, processClaim, { 'zeebe:assignmentDefinition': { assignee: 'claims-agent' } });
       const claimApproved = await add(diagramId, END_EVENT, 'Claim Approved', {
         afterElementId: processClaim,
       });
@@ -508,8 +502,7 @@ function s08TwoBoundaryEvents(): EvalScenario {
         afterElementId: timerBoundary,
       });
       await setProps(diagramId, sendReminder, {
-        'camunda:type': 'external',
-        'camunda:topic': 'send-sla-reminder',
+        'zeebe:taskDefinition': { type: 'send-sla-reminder' },
       });
       const reminderSent = await add(diagramId, END_EVENT, 'Reminder Sent', {
         afterElementId: sendReminder,
@@ -525,8 +518,7 @@ function s08TwoBoundaryEvents(): EvalScenario {
         afterElementId: errorBoundary,
       });
       await setProps(diagramId, handleRejection, {
-        'camunda:type': 'external',
-        'camunda:topic': 'handle-claim-rejection',
+        'zeebe:taskDefinition': { type: 'handle-claim-rejection' },
       });
       const rejected = await add(diagramId, END_EVENT, 'Claim Rejected', {
         afterElementId: handleRejection,
@@ -576,14 +568,13 @@ function s09ExpandedSubprocess(): EvalScenario {
         parentId: sub,
         afterElementId: split,
       });
-      await setProps(diagramId, pickItems, { 'camunda:assignee': 'warehouse' });
+      await setProps(diagramId, pickItems, { 'zeebe:assignmentDefinition': { assignee: 'warehouse' } });
       const packItems = await add(diagramId, SERVICE_TASK, 'Pack Items', {
         parentId: sub,
         afterElementId: split,
       });
       await setProps(diagramId, packItems, {
-        'camunda:type': 'external',
-        'camunda:topic': 'pack-items',
+        'zeebe:taskDefinition': { type: 'pack-items' },
       });
       const join = await add(diagramId, PARALLEL_GATEWAY, 'Tasks Complete', {
         parentId: sub,
@@ -604,8 +595,7 @@ function s09ExpandedSubprocess(): EvalScenario {
       // Main flow after subprocess
       const shipOrder = await add(diagramId, SERVICE_TASK, 'Ship Order', { afterElementId: sub });
       await setProps(diagramId, shipOrder, {
-        'camunda:type': 'external',
-        'camunda:topic': 'ship-order',
+        'zeebe:taskDefinition': { type: 'ship-order' },
       });
       const done = await add(diagramId, END_EVENT, 'Shipped', { afterElementId: shipOrder });
 
@@ -619,8 +609,7 @@ function s09ExpandedSubprocess(): EvalScenario {
         afterElementId: shortageError,
       });
       await setProps(diagramId, handleShortage, {
-        'camunda:type': 'external',
-        'camunda:topic': 'handle-shortage',
+        'zeebe:taskDefinition': { type: 'handle-shortage' },
       });
       const outOfStock = await add(diagramId, END_EVENT, 'Out of Stock', {
         afterElementId: handleShortage,
@@ -662,13 +651,12 @@ function s10EventSubprocess(): EvalScenario {
         afterElementId: start,
       });
       await setProps(diagramId, processTx, {
-        'camunda:type': 'external',
-        'camunda:topic': 'process-transaction',
+        'zeebe:taskDefinition': { type: 'process-transaction' },
       });
       const confirmOrder = await add(diagramId, USER_TASK, 'Confirm Order', {
         afterElementId: processTx,
       });
-      await setProps(diagramId, confirmOrder, { 'camunda:assignee': 'sales' });
+      await setProps(diagramId, confirmOrder, { 'zeebe:assignmentDefinition': { assignee: 'sales' } });
       const done = await add(diagramId, END_EVENT, 'Transaction Complete', {
         afterElementId: confirmOrder,
       });
@@ -694,16 +682,14 @@ function s10EventSubprocess(): EvalScenario {
         afterElementId: subStart,
       });
       await setProps(diagramId, voidTx, {
-        'camunda:type': 'external',
-        'camunda:topic': 'cancel-transaction',
+        'zeebe:taskDefinition': { type: 'cancel-transaction' },
       });
       const notifyFailure = await add(diagramId, SERVICE_TASK, 'Notify Customer of Failure', {
         parentId: evtSub,
         afterElementId: voidTx,
       });
       await setProps(diagramId, notifyFailure, {
-        'camunda:type': 'external',
-        'camunda:topic': 'notify-failure',
+        'zeebe:taskDefinition': { type: 'notify-failure' },
       });
       const subEnd = await add(diagramId, END_EVENT, 'Error Handled', {
         parentId: evtSub,
@@ -727,7 +713,7 @@ function s10EventSubprocess(): EvalScenario {
  * - InclusiveGateway split and merge (any subset of branches may be active)
  * - Three parallel optional paths: email / database / audit-log
  * - Condition expressions on all outgoing flows
- * - ScriptTask with scriptFormat and script body (Camunda 7 requirement)
+ * - ScriptTask with scriptFormat and script body (Camunda 8 / Zeebe requirement)
  * - Layout must fan the 3 branches symmetrically around the gateway Y axis
  */
 function s11InclusiveGateway(): EvalScenario {
@@ -748,8 +734,7 @@ function s11InclusiveGateway(): EvalScenario {
         afterElementId: evaluate,
       });
       await setProps(diagramId, sendEmail, {
-        'camunda:type': 'external',
-        'camunda:topic': 'send-email',
+        'zeebe:taskDefinition': { type: 'send-email' },
       });
 
       // Branch B: database update
@@ -757,8 +742,7 @@ function s11InclusiveGateway(): EvalScenario {
         afterElementId: evaluate,
       });
       await setProps(diagramId, updateRecord, {
-        'camunda:type': 'external',
-        'camunda:topic': 'update-record',
+        'zeebe:taskDefinition': { type: 'update-record' },
       });
 
       // Branch C: audit log (ScriptTask)
@@ -780,15 +764,15 @@ function s11InclusiveGateway(): EvalScenario {
       await connect(diagramId, start, evaluate);
       await connect(diagramId, evaluate, sendEmail, {
         label: 'Email',
-        conditionExpression: '${notifyByEmail}',
+        conditionExpression: '= notifyByEmail',
       });
       await connect(diagramId, evaluate, updateRecord, {
         label: 'DB',
-        conditionExpression: '${updateDb}',
+        conditionExpression: '= updateDb',
       });
       await connect(diagramId, evaluate, auditLog, {
         label: 'Audit',
-        conditionExpression: '${auditRequired}',
+        conditionExpression: '= auditRequired',
       });
       await connect(diagramId, sendEmail, merge);
       await connect(diagramId, updateRecord, merge);
@@ -844,7 +828,7 @@ function s12FourLanes(): EvalScenario {
         laneId: laneCustomer,
         afterElementId: start,
       });
-      await setProps(diagramId, submitTicket, { 'camunda:assignee': 'customer' });
+      await setProps(diagramId, submitTicket, { 'zeebe:assignmentDefinition': { assignee: 'customer' } });
       const resolved = await add(diagramId, END_EVENT, 'Issue Resolved', {
         participantId: participant,
         laneId: laneCustomer,
@@ -856,21 +840,11 @@ function s12FourLanes(): EvalScenario {
         laneId: laneSupport,
         afterElementId: submitTicket,
       });
-      await setProps(diagramId, triage, { 'camunda:assignee': 'support-team' });
+      await setProps(diagramId, triage, { 'zeebe:assignmentDefinition': { assignee: 'support-team' } });
       await handleSetFormData({
         diagramId,
         elementId: triage,
-        fields: [
-          {
-            id: 'priority',
-            label: 'Priority',
-            type: 'enum',
-            values: [
-              { id: 'low', name: 'Low' },
-              { id: 'high', name: 'High' },
-            ],
-          },
-        ],
+        formId: 'triage-form',
       });
 
       // Non-interrupting 4-hour timer on Triage → send status update
@@ -886,8 +860,7 @@ function s12FourLanes(): EvalScenario {
         afterElementId: triageTimer,
       });
       await setProps(diagramId, sendStatus, {
-        'camunda:type': 'external',
-        'camunda:topic': 'send-status-update',
+        'zeebe:taskDefinition': { type: 'send-status-update' },
       });
       const statusSent = await add(diagramId, END_EVENT, 'Update Sent', {
         participantId: participant,
@@ -908,7 +881,7 @@ function s12FourLanes(): EvalScenario {
         afterElementId: priorityGw,
         autoConnect: false,
       });
-      await setProps(diagramId, handleDirectly, { 'camunda:assignee': 'support-agent' });
+      await setProps(diagramId, handleDirectly, { 'zeebe:assignmentDefinition': { assignee: 'support-agent' } });
 
       const mergeGw = await add(diagramId, EXCLUSIVE_GATEWAY, 'Merge', {
         participantId: participant,
@@ -920,21 +893,21 @@ function s12FourLanes(): EvalScenario {
         laneId: laneSupport,
         afterElementId: mergeGw,
       });
-      await setProps(diagramId, closeTicket, { 'camunda:assignee': 'support-agent' });
+      await setProps(diagramId, closeTicket, { 'zeebe:assignmentDefinition': { assignee: 'support-agent' } });
 
       // High-priority: escalate to Technical then Manager
       const investigate = await add(diagramId, USER_TASK, 'Investigate Issue', {
         participantId: participant,
         laneId: laneTechnical,
       });
-      await setProps(diagramId, investigate, { 'camunda:assignee': 'technical' });
+      await setProps(diagramId, investigate, { 'zeebe:assignmentDefinition': { assignee: 'technical' } });
 
       const approveFix = await add(diagramId, USER_TASK, 'Approve Fix', {
         participantId: participant,
         laneId: laneManager,
         afterElementId: investigate,
       });
-      await setProps(diagramId, approveFix, { 'camunda:assignee': 'manager' });
+      await setProps(diagramId, approveFix, { 'zeebe:assignmentDefinition': { assignee: 'manager' } });
 
       await connect(diagramId, start, submitTicket);
       await connect(diagramId, submitTicket, triage);
@@ -943,7 +916,7 @@ function s12FourLanes(): EvalScenario {
       await connect(diagramId, triage, priorityGw);
       await connect(diagramId, priorityGw, investigate, {
         label: 'High',
-        conditionExpression: "${priority == 'high'}",
+        conditionExpression: '= priority = "high"',
       });
       await connect(diagramId, priorityGw, handleDirectly, { label: 'Low', isDefault: true });
       await connect(diagramId, investigate, approveFix);

@@ -1,55 +1,17 @@
 /**
- * JSON Schema for the set_bpmn_camunda_listeners tool.
+ * JSON Schema for the set_bpmn_camunda_listeners tool (Zeebe listeners).
  *
  * Extracted from set-camunda-listeners.ts to keep the handler logic
  * readable and within the max-lines limit.
  */
 
-/** Reusable field injection schema for listener items. */
-const FIELD_INJECTION_SCHEMA = {
-  type: 'array',
-  description: 'Field injection on the listener (e.g. for configuring delegate classes)',
-  items: {
-    type: 'object',
-    properties: {
-      name: { type: 'string', description: 'Field name' },
-      stringValue: {
-        type: 'string',
-        description: 'Static string value (attribute form)',
-      },
-      string: {
-        type: 'string',
-        description: 'Static string value (child element form)',
-      },
-      expression: {
-        type: 'string',
-        description: 'Expression value (e.g. ${myBean.value})',
-      },
-    },
-    required: ['name'],
-  },
-} as const;
-
-/** Reusable inline script schema for listener items. */
-const SCRIPT_SCHEMA = {
-  type: 'object',
-  description: 'Inline script for the listener',
-  properties: {
-    scriptFormat: {
-      type: 'string',
-      description: "Script language (e.g. 'groovy', 'javascript')",
-    },
-    value: { type: 'string', description: 'The script body' },
-  },
-  required: ['scriptFormat', 'value'],
-} as const;
-
 export const TOOL_DEFINITION = {
   name: 'set_bpmn_camunda_listeners',
   description:
-    'Set Camunda extension elements on a BPMN element: execution listeners, task listeners, and/or error event definitions. ' +
-    'Execution listeners can be attached to any flow node or process. Task listeners are specific to UserTasks. ' +
-    'Error definitions (camunda:ErrorEventDefinition) are specific to ServiceTasks for Camunda 7 External Task error handling.',
+    'Set Zeebe execution listeners and/or task listeners on a BPMN element. ' +
+    'In Camunda 8, listeners are job-worker-based — each listener specifies a worker type and optional retries. ' +
+    'Execution listeners can be attached to any flow node or process (eventType: start/end). ' +
+    'Task listeners are specific to UserTasks (eventType: complete, assignment, update, cancel).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -64,26 +26,21 @@ export const TOOL_DEFINITION = {
         items: {
           type: 'object',
           properties: {
-            event: {
+            eventType: {
               type: 'string',
-              description: "Listener event: 'start', 'end', or 'take' (for sequence flows)",
+              enum: ['start', 'end'],
+              description: "When the listener fires: 'start' or 'end'",
             },
-            class: {
+            type: {
               type: 'string',
-              description: 'Fully qualified Java class name implementing ExecutionListener',
+              description: 'Job worker type that handles this listener (e.g. "audit-logger")',
             },
-            delegateExpression: {
+            retries: {
               type: 'string',
-              description: "Expression resolving to a listener bean (e.g. '${myListenerBean}')",
+              description: 'Number of retries (default: "3")',
             },
-            expression: {
-              type: 'string',
-              description: "UEL expression to evaluate (e.g. '${myBean.notify(execution)}')",
-            },
-            script: SCRIPT_SCHEMA,
-            fields: FIELD_INJECTION_SCHEMA,
           },
-          required: ['event'],
+          required: ['eventType', 'type'],
         },
       },
       taskListeners: {
@@ -92,114 +49,49 @@ export const TOOL_DEFINITION = {
         items: {
           type: 'object',
           properties: {
-            event: {
+            eventType: {
               type: 'string',
-              description:
-                "Listener event: 'create', 'assignment', 'complete', 'delete', or 'timeout' (requires timerEventDefinition)",
+              enum: ['complete', 'assignment', 'update', 'cancel'],
+              description: "When the listener fires: 'complete', 'assignment', 'update', or 'cancel'",
             },
-            id: {
+            type: {
               type: 'string',
-              description:
-                'Optional unique ID for the task listener. Required when using timeout event with timerEventDefinition.',
+              description: 'Job worker type that handles this listener (e.g. "task-assignment-handler")',
             },
-            class: {
+            retries: {
               type: 'string',
-              description: 'Fully qualified Java class name implementing TaskListener',
-            },
-            delegateExpression: {
-              type: 'string',
-              description: 'Expression resolving to a listener bean',
-            },
-            expression: {
-              type: 'string',
-              description: 'UEL expression to evaluate',
-            },
-            script: SCRIPT_SCHEMA,
-            fields: FIELD_INJECTION_SCHEMA,
-            timerEventDefinition: {
-              type: 'object',
-              description:
-                "Timer definition for 'timeout' task listeners. Specifies when the listener fires if the task isn't completed in time. Provide exactly ONE of timeDuration, timeDate, or timeCycle.",
-              properties: {
-                timeDuration: {
-                  type: 'string',
-                  description:
-                    "ISO 8601 duration (e.g. 'PT15M' for 15 minutes, 'PT1H' for 1 hour). Also supports expressions like '${myDuration}'.",
-                },
-                timeDate: {
-                  type: 'string',
-                  description:
-                    "ISO 8601 date-time (e.g. '2025-12-31T23:59:00Z'). Also supports expressions.",
-                },
-                timeCycle: {
-                  type: 'string',
-                  description:
-                    "ISO 8601 repeating interval (e.g. 'R3/PT10M' for 3 repetitions every 10 minutes).",
-                },
-              },
+              description: 'Number of retries (default: "3")',
             },
           },
-          required: ['event'],
-        },
-      },
-      errorDefinitions: {
-        type: 'array',
-        description:
-          'camunda:ErrorEventDefinition entries for ServiceTask error handling (replaces existing). ' +
-          'Distinct from standard bpmn:ErrorEventDefinition on boundary events.',
-        items: {
-          type: 'object',
-          properties: {
-            id: {
-              type: 'string',
-              description: 'Unique ID for the error event definition',
-            },
-            expression: {
-              type: 'string',
-              description: 'Error expression (e.g. \'${error.code == "ERR_001"}\')',
-            },
-            errorRef: {
-              type: 'object',
-              properties: {
-                id: { type: 'string', description: 'Error element ID' },
-                name: { type: 'string', description: 'Error name' },
-                errorCode: { type: 'string', description: 'Error code' },
-              },
-              required: ['id'],
-              description: 'Reference to a bpmn:Error root element (created if not existing)',
-            },
-          },
-          required: ['id'],
+          required: ['eventType', 'type'],
         },
       },
     },
     required: ['diagramId', 'elementId'],
     examples: [
       {
-        title: 'Add a groovy execution listener on task start',
+        title: 'Add an execution listener that logs on task start',
         value: {
           diagramId: '<diagram-id>',
           elementId: 'ServiceTask_ProcessOrder',
           executionListeners: [
             {
-              event: 'start',
-              script: {
-                scriptFormat: 'groovy',
-                value: 'execution.setVariable("startTime", new Date())',
-              },
+              eventType: 'start',
+              type: 'audit-logger',
+              retries: '3',
             },
           ],
         },
       },
       {
-        title: 'Add a task listener with delegate expression',
+        title: 'Add a task listener for assignment handling',
         value: {
           diagramId: '<diagram-id>',
           elementId: 'UserTask_ReviewOrder',
           taskListeners: [
             {
-              event: 'complete',
-              delegateExpression: '${auditLogger}',
+              eventType: 'assignment',
+              type: 'task-assignment-handler',
             },
           ],
         },

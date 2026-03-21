@@ -7,7 +7,7 @@ describe('create_bpmn_lanes autoDistribute', () => {
     clearDiagrams();
   });
 
-  test('auto-distributes elements by role (camunda:assignee)', async () => {
+  test('auto-distributes elements by role (zeebe:assignmentDefinition)', async () => {
     const diagramId = await createDiagram();
     const participant = await addElement(diagramId, 'bpmn:Participant', {
       name: 'HR Pool',
@@ -33,12 +33,12 @@ describe('create_bpmn_lanes autoDistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:assignee': 'Employee' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'Employee' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task2,
-      properties: { 'camunda:assignee': 'Manager' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'Manager' } },
     });
 
     // Create lanes with autoDistribute
@@ -93,7 +93,7 @@ describe('create_bpmn_lanes autoDistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:assignee': 'Reviewer' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'Reviewer' } },
     });
 
     // Connect flow
@@ -184,7 +184,7 @@ describe('create_bpmn_lanes autoDistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task,
-      properties: { 'camunda:assignee': 'ADMIN' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'ADMIN' } },
     });
 
     const res = parseResult(
@@ -217,7 +217,7 @@ describe('create_bpmn_lanes autoDistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task,
-      properties: { 'camunda:assignee': 'Role B' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'Role B' } },
     });
 
     const res = parseResult(
@@ -263,7 +263,7 @@ describe('create_bpmn_lanes autoDistribute', () => {
     await handleSetProperties({
       diagramId,
       elementId: task,
-      properties: { 'camunda:candidateGroups': 'Finance, HR' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'Finance, HR' } },
     });
 
     const res = parseResult(

@@ -10,7 +10,7 @@
  *   bpmn://diagram/{id}/variables — process variable references
  *   bpmn://diagram/{id}/xml    — current BPMN XML
  *   bpmn://diagram/{id}/elements — all elements with properties
- *   bpmn://guides/executable-camunda7 — Camunda 7 deployment guide
+ *   bpmn://guides/executable-camunda8 — Camunda 8 deployment guide
  *   bpmn://guides/modeling-elements — element modeling best practices
  *   bpmn://guides/element-properties — Camunda property catalog
  */
@@ -23,7 +23,7 @@ import { handleListProcessVariables } from './handlers/core/list-process-variabl
 import { handleListDiagrams } from './handlers/core/list-diagrams';
 import { handleListElements } from './handlers/elements/list-elements';
 import {
-  EXECUTABLE_CAMUNDA7_GUIDE,
+  EXECUTABLE_CAMUNDA8_GUIDE,
   MODELING_ELEMENTS_GUIDE,
   ELEMENT_PROPERTIES_GUIDE,
 } from './resource-guides';
@@ -65,7 +65,7 @@ export const RESOURCE_TEMPLATES = [
     uriTemplate: 'bpmn://diagram/{diagramId}/elements',
     name: 'Diagram elements',
     description:
-      'All elements in the diagram with types, names, positions, connections, and Camunda properties. ' +
+      'All elements in the diagram with types, names, positions, connections, and Zeebe extensions. ' +
       'Equivalent to calling list_bpmn_elements without filters.',
     mimeType: 'application/json',
   },
@@ -77,11 +77,11 @@ export const RESOURCE_TEMPLATES = [
  */
 export const STATIC_RESOURCES = [
   {
-    uri: 'bpmn://guides/executable-camunda7',
-    name: 'Executable Camunda 7 / Operaton guide',
+    uri: 'bpmn://guides/executable-camunda8',
+    name: 'Executable Camunda 8 (Zeebe) guide',
     description:
       'Constraints, conventions, and best practices for building executable BPMN processes ' +
-      'targeting Camunda 7 (Operaton). Covers deployment, task types, forms, and common pitfalls.',
+      'targeting Camunda 8 (Zeebe). Covers deployment, task types, forms, and common pitfalls.',
     mimeType: MIME_MARKDOWN,
   },
   {
@@ -235,10 +235,10 @@ export async function readResource(
     };
   }
 
-  // bpmn://guides/executable-camunda7
-  if (uri === 'bpmn://guides/executable-camunda7') {
+  // bpmn://guides/executable-camunda8
+  if (uri === 'bpmn://guides/executable-camunda8') {
     return {
-      contents: [{ uri, mimeType: MIME_MARKDOWN, text: EXECUTABLE_CAMUNDA7_GUIDE }],
+      contents: [{ uri, mimeType: MIME_MARKDOWN, text: EXECUTABLE_CAMUNDA8_GUIDE }],
     };
   }
 

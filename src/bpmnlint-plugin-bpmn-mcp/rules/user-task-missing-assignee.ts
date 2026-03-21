@@ -1,13 +1,12 @@
 /**
  * Custom bpmnlint rule: user-task-missing-assignee
  *
- * Warns when a bpmn:UserTask does not have at least one of:
- *   - camunda:assignee
- *   - camunda:candidateUsers
- *   - camunda:candidateGroups
+ * Warns when a bpmn:UserTask does not have a zeebe:AssignmentDefinition
+ * extension element with at least one of: assignee, candidateGroups,
+ * or candidateUsers.
  *
- * Without any of these, the Camunda 7 (Operaton) engine creates the
- * task but nobody can claim it, making the process stuck.
+ * Without assignment, the Zeebe engine creates the task but nobody
+ * can claim it, making the process stuck.
  */
 
 import { isType } from '../utils';
@@ -18,17 +17,19 @@ function ruleFactory() {
       return;
     }
 
-    const assignee = node.$attrs?.['camunda:assignee'] ?? node.assignee;
-    const candidateUsers = node.$attrs?.['camunda:candidateUsers'] ?? node.candidateUsers;
-    const candidateGroups = node.$attrs?.['camunda:candidateGroups'] ?? node.candidateGroups;
-
-    if (!assignee && !candidateUsers && !candidateGroups) {
-      reporter.report(
-        node.id,
-        'User task has no assignee, candidateUsers, or candidateGroups — ' +
-          'the task will be created but nobody can claim it'
-      );
+    // Check for zeebe:AssignmentDefinition in extension elements
+    const extensionElements = node.extensionElements?.values || [];
+    for (const ext of extensionElements) {
+      if (isType(ext, 'zeebe:AssignmentDefinition')) {
+        if (ext.assignee || ext.candidateGroups || ext.candidateUsers) return;
+      }
     }
+
+    reporter.report(
+      node.id,
+      'User task has no assignment — add a zeebe:AssignmentDefinition ' +
+        'with assignee, candidateUsers, or candidateGroups'
+    );
   }
 
   return { check };

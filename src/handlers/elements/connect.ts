@@ -316,7 +316,7 @@ function buildPairConnectHints(
   const defaultConditionWarning =
     isDefault && conditionExpression
       ? 'Warning: default flow has a condition expression — the condition is ignored at runtime by ' +
-        'the Camunda 7 / Operaton engine. Remove the condition from the default flow, or mark a ' +
+        'the engine. Remove the condition from the default flow, or mark a ' +
         'different flow as default.'
       : undefined;
   return { hints, defaultConditionWarning };

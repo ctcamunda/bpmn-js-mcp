@@ -55,7 +55,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
     'analyze_bpmn_lanes',
     'manage_bpmn_root_elements',
   ],
-  /** All seven Camunda-specific property setters. */
+  /** All Zeebe/Camunda property setters. */
   camunda: [
     'set_bpmn_input_output_mapping',
     'set_bpmn_event_definition',

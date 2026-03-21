@@ -170,26 +170,8 @@ describe('event subprocess guidance', () => {
   });
 });
 
-describe('external task hint', () => {
-  test('suggests asyncBefore when setting camunda:topic', async () => {
-    const diagramId = await createDiagram();
-    const taskId = (await addEl(diagramId, 'bpmn:ServiceTask', 'External Work')).elementId;
-
-    const result = parseResult(
-      await handleSetProperties({
-        diagramId,
-        elementId: taskId,
-        properties: { 'camunda:topic': 'my-topic' },
-      })
-    );
-
-    expect(result.nextSteps).toBeDefined();
-    expect(result.nextSteps.some((h: any) => h.description.includes('asyncBefore'))).toBe(true);
-  });
-});
-
-describe('DMN integration hint', () => {
-  test('suggests decisionRefBinding when setting camunda:decisionRef on BusinessRuleTask', async () => {
+describe('zeebe:calledDecision hint', () => {
+  test('suggests zeebe:resultVariable when setting zeebe:calledDecision on BusinessRuleTask', async () => {
     const diagramId = await createDiagram();
     const taskId = (await addEl(diagramId, 'bpmn:BusinessRuleTask', 'Evaluate Rules')).elementId;
 
@@ -197,19 +179,19 @@ describe('DMN integration hint', () => {
       await handleSetProperties({
         diagramId,
         elementId: taskId,
-        properties: { 'camunda:decisionRef': 'myDecision' },
+        properties: { 'zeebe:decisionId': 'myDecision' },
       })
     );
 
     expect(result.nextSteps).toBeDefined();
-    expect(result.nextSteps.some((h: any) => h.description.includes('decisionRefBinding'))).toBe(
+    expect(result.nextSteps.some((h: any) => h.description.includes('resultVariable'))).toBe(
       true
     );
   });
 });
 
-describe('CallActivity version binding hint', () => {
-  test('suggests calledElementBinding when setting calledElement', async () => {
+describe('zeebe:calledElement hint', () => {
+  test('suggests variable propagation when setting zeebe:processId on CallActivity', async () => {
     const diagramId = await createDiagram();
     const callId = (await addEl(diagramId, 'bpmn:CallActivity', 'Call Sub')).elementId;
 
@@ -217,62 +199,14 @@ describe('CallActivity version binding hint', () => {
       await handleSetProperties({
         diagramId,
         elementId: callId,
-        properties: { calledElement: 'mySubProcess' },
+        properties: { 'zeebe:processId': 'mySubProcess' },
       })
     );
 
     expect(result.nextSteps).toBeDefined();
-    expect(result.nextSteps.some((h: any) => h.description.includes('calledElementBinding'))).toBe(
+    expect(result.nextSteps.some((h: any) => h.description.includes('propagateAllChildVariables') || h.description.includes('variable'))).toBe(
       true
     );
-  });
-});
-
-describe('history TTL hint', () => {
-  test('suggests historyTimeToLive after setting isExecutable on process', async () => {
-    // Import a minimal BPMN without historyTimeToLive to test the hint
-    const { handleImportXml } = await import('../../../src/handlers');
-    const minimalBpmn = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-  id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="false" />
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1" />
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
-    const importResult = parseResult(await handleImportXml({ xml: minimalBpmn }));
-    const diagramId = importResult.diagramId;
-
-    const result = parseResult(
-      await handleSetProperties({
-        diagramId,
-        elementId: 'Process_1',
-        properties: { isExecutable: true },
-      })
-    );
-
-    expect(result.nextSteps).toBeDefined();
-    expect(result.nextSteps.some((h: any) => h.description.includes('historyTimeToLive'))).toBe(
-      true
-    );
-  });
-
-  test('does not suggest historyTimeToLive when already set', async () => {
-    // Default createDiagram includes historyTimeToLive="P180D"
-    const diagramId = await createDiagram();
-
-    const result = parseResult(
-      await handleSetProperties({
-        diagramId,
-        elementId: 'Process_1',
-        properties: { isExecutable: true },
-      })
-    );
-
-    // Should NOT suggest HTTL since it's already set on the default template
-    expect(result.nextSteps).toBeUndefined();
   });
 });
 

@@ -52,16 +52,16 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
         diagramId,
         elementId: task1,
         properties: {
-          'camunda:assignee': '${initiator}',
-          'camunda:candidateGroups': 'employee',
+          'zeebe:assignmentDefinition': { assignee: '${initiator}' },
+          'zeebe:assignmentDefinition': { candidateGroups: 'employee' },
         },
       });
       await handleSetProperties({
         diagramId,
         elementId: task2,
         properties: {
-          'camunda:assignee': '${manager}',
-          'camunda:candidateGroups': 'manager',
+          'zeebe:assignmentDefinition': { assignee: '${manager}' },
+          'zeebe:assignmentDefinition': { candidateGroups: 'manager' },
         },
       });
 
@@ -100,12 +100,12 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
       await handleSetProperties({
         diagramId,
         elementId: task1,
-        properties: { 'camunda:assignee': 'alice' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'alice' } },
       });
       await handleSetProperties({
         diagramId,
         elementId: task2,
-        properties: { 'camunda:assignee': 'bob' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'bob' } },
       });
 
       const res = parseResult(
@@ -137,12 +137,12 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
       await handleSetProperties({
         diagramId,
         elementId: task1,
-        properties: { 'camunda:assignee': '${someUser}' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: '${someUser}' } },
       });
       await handleSetProperties({
         diagramId,
         elementId: task2,
-        properties: { 'camunda:assignee': '${anotherUser}' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: '${anotherUser}' } },
       });
 
       const res = parseResult(
@@ -173,7 +173,7 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
       await handleSetProperties({
         diagramId,
         elementId: human,
-        properties: { 'camunda:candidateGroups': 'sales' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'sales' } },
       });
 
       // Two ServiceTasks with no role assignment
@@ -213,7 +213,7 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
       await handleSetProperties({
         diagramId,
         elementId: human,
-        properties: { 'camunda:candidateGroups': 'approvers' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'approvers' } },
       });
 
       // Automated tasks — no role
@@ -244,7 +244,7 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
       await handleSetProperties({
         diagramId,
         elementId: task1,
-        properties: { 'camunda:candidateGroups': 'requester' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'requester' } },
       });
 
       // UserTask without role — must remain Unassigned (not "Automated Tasks")
@@ -378,12 +378,12 @@ describe('analyze_bpmn_lanes — regression fixes', () => {
       await handleSetProperties({
         diagramId,
         elementId: task1,
-        properties: { 'camunda:candidateGroups': 'role-a' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'role-a' } },
       });
       await handleSetProperties({
         diagramId,
         elementId: task2,
-        properties: { 'camunda:candidateGroups': 'role-b' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'role-b' } },
       });
 
       const res = parseResult(

@@ -186,7 +186,7 @@ describe('Issue H — lane detail counts exclude BoundaryEvents and compensation
       await handleSetProperties({
         diagramId,
         elementId: agentTask,
-        properties: { 'camunda:candidateGroups': 'agent' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'agent' } },
       });
 
       const svcTask = await addElement(diagramId, 'bpmn:ServiceTask', {
@@ -216,7 +216,7 @@ describe('Issue H — lane detail counts exclude BoundaryEvents and compensation
       await handleSetProperties({
         diagramId,
         elementId: escalateTask,
-        properties: { 'camunda:candidateGroups': 'manager' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'manager' } },
       });
       // Connect boundary event to escalation handler — this gives it a vote in role assignment
       await handleConnect({ diagramId, sourceElementId: timerBeId, targetElementId: escalateTask });
@@ -258,7 +258,7 @@ describe('Issue H — lane detail counts exclude BoundaryEvents and compensation
       await handleSetProperties({
         diagramId,
         elementId: task1,
-        properties: { 'camunda:candidateGroups': 'worker' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'worker' } },
       });
 
       const task2 = await addElement(diagramId, 'bpmn:UserTask', {
@@ -268,7 +268,7 @@ describe('Issue H — lane detail counts exclude BoundaryEvents and compensation
       await handleSetProperties({
         diagramId,
         elementId: task2,
-        properties: { 'camunda:candidateGroups': 'manager' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'manager' } },
       });
       await handleConnect({ diagramId, sourceElementId: task1, targetElementId: task2 });
 
@@ -292,7 +292,7 @@ describe('Issue H — lane detail counts exclude BoundaryEvents and compensation
       await handleSetProperties({
         diagramId,
         elementId: escalate,
-        properties: { 'camunda:candidateGroups': 'manager' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'manager' } },
       });
       await handleConnect({ diagramId, sourceElementId: beId, targetElementId: escalate });
 

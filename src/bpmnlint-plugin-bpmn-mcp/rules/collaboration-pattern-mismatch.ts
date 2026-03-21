@@ -3,8 +3,8 @@
  *
  * Detects when a collaboration has one executable expanded pool and another
  * expanded pool that contains only message events (start/intermediate/end
- * message events with no real tasks) or has no process at all. In Camunda 7,
- * only one pool can be deployed as executable — the second pool should
+ * message events with no real tasks) or has no process at all. Typically only
+ * one pool is executable per BPMN file — the second pool should
  * typically be collapsed to represent an external message endpoint.
  *
  * This rule supplements `multiple-expanded-pools` with more specific
@@ -90,7 +90,7 @@ export default function collaborationPatternMismatch() {
         reporter.report(
           participant.id,
           `Participant "${participant.name || participant.id}" is expanded but contains ` +
-            `only message events (no tasks). In Camunda 7, only one pool is executable — ` +
+            `only message events (no tasks). Typically only one pool is executable per BPMN file — ` +
             `consider collapsing this pool to represent an external message endpoint. ` +
             `Use set_bpmn_element_properties with { isExpanded: false } or redesign ` +
             `using create_bpmn_participant with collapsed: true.`

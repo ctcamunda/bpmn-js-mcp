@@ -59,17 +59,18 @@ const AUTO_TASK_TYPES = new Set([
 ]);
 
 /**
- * Extract the primary role (assignee or first candidateGroup) from a flow node
- * business object. Returns null when no role assignment is found.
+ * Extract the primary role from a flow node's zeebe:AssignmentDefinition.
+ * Returns null when no role assignment is found.
  */
 export function extractPrimaryRole(node: any): string | null {
-  const assignee = node.$attrs?.['camunda:assignee'] ?? node.assignee;
-  if (assignee && typeof assignee === 'string' && assignee.trim()) {
-    return assignee.trim();
+  const extVals = node.extensionElements?.values || [];
+  const assignment = extVals.find((e: any) => e.$type === 'zeebe:AssignmentDefinition');
+  if (!assignment) return null;
+  if (assignment.assignee && typeof assignment.assignee === 'string' && assignment.assignee.trim()) {
+    return assignment.assignee.trim();
   }
-  const candidateGroups = node.$attrs?.['camunda:candidateGroups'] ?? node.candidateGroups;
-  if (candidateGroups) {
-    const first = String(candidateGroups).split(',')[0]?.trim();
+  if (assignment.candidateGroups) {
+    const first = String(assignment.candidateGroups).split(',')[0]?.trim();
     if (first) return first;
   }
   return null;
@@ -241,7 +242,7 @@ function executeAssignments(
 /**
  * Automatically distribute existing elements in a participant to the given lanes.
  * Strategy:
- * 1. Role-based: match lane names to camunda:assignee / candidateGroups (case-insensitive)
+ * 1. Role-based: match lane names to zeebe:AssignmentDefinition (case-insensitive)
  * 2. Type-based fallback: group human tasks vs automated tasks
  * 3. Flow-control: assign gateways/events to their most-connected neighbor's lane
  */

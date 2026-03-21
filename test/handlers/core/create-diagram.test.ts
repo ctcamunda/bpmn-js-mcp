@@ -53,27 +53,11 @@ describe('create_bpmn_diagram', () => {
     expect(xml).toContain('id="Process_1"');
   });
 
-  test('sets camunda:historyTimeToLive on the process', async () => {
-    const diagramId = await createDiagram('HTL Test');
+  test('exported XML does not contain camunda:historyTimeToLive (Zeebe migration)', async () => {
+    const diagramId = await createDiagram('Zeebe Test');
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:historyTimeToLive="P180D"');
-  });
-
-  test('historyTimeToLive is present even without a name', async () => {
-    const diagramId = await createDiagram();
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('camunda:historyTimeToLive="P180D"');
-  });
-
-  test('lint does not warn about missing historyTimeToLive on new diagram', async () => {
-    const diagramId = await createDiagram('Lint HTL Test');
-    const lintRes = parseResult(await handleLintDiagram({ diagramId }));
-    const htlIssues = (lintRes.issues || []).filter(
-      (i: any) => i.rule && i.rule.includes('history-time-to-live')
-    );
-    expect(htlIssues).toEqual([]);
+    expect(xml).not.toContain('camunda:historyTimeToLive');
   });
 
   test('workflowContext single-organization recommends create_bpmn_participant with lanes', async () => {

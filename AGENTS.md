@@ -16,7 +16,7 @@ MCP (Model Context Protocol) server that lets AI assistants create and manipulat
 
 - **Language:** TypeScript (ES2022, CommonJS)
 - **Runtime:** Node.js ≥ 16
-- **Key deps:** `@modelcontextprotocol/sdk`, `bpmn-js`, `jsdom`, `camunda-bpmn-moddle`, `bpmnlint`, `bpmnlint-plugin-camunda-compat`, `@types/bpmn-moddle`
+- **Key deps:** `@modelcontextprotocol/sdk`, `bpmn-js`, `jsdom`, `zeebe-bpmn-moddle`, `bpmnlint`, `bpmnlint-plugin-camunda-compat`, `@types/bpmn-moddle`
 - **Test:** Vitest
 - **Lint:** ESLint 9 + typescript-eslint 8
 - **Dev env:** Nix (devenv) with devcontainer support
@@ -53,16 +53,16 @@ Modular `src/` layout, communicates over **stdio** using the MCP SDK. See [`docs
 | `src/handlers/collaboration/`   | Collaboration: create-collaboration, create-lanes, assign-elements-to-lane, wrap-process-in-collaboration, manage-root-elements, handoff-to-lane                                  |
 | `src/linter.ts`                 | Centralised bpmnlint integration: lint config, Linter instance, `lintDiagram()`, `appendLintFeedback()`                                                                           |
 | `src/bpmnlint-types.ts`         | TypeScript type declarations for bpmnlint (`LintConfig`, `LintResults`, `FlatLintIssue`)                                                                                          |
-| `src/bpmnlint-plugin-bpmn-mcp/` | Custom bpmnlint plugin with Camunda 7 (Operaton) specific rules                                                                                                                   |
+| `src/bpmnlint-plugin-bpmn-mcp/` | Custom bpmnlint plugin with Camunda 8 (Zeebe) specific rules                                                                                                                   |
 | `src/persistence.ts`            | Optional file-backed diagram persistence — auto-save to `.bpmn` files, load on startup                                                                                            |
 
 **Core pattern:**
 
 1. A shared `jsdom` instance polyfills browser APIs (SVG, CSS, structuredClone) so `bpmn-js` can run headlessly.
 2. Diagrams are stored in-memory in a `Map<string, DiagramState>` keyed by generated IDs.
-3. **30 MCP tools** are exposed (see "Tool Naming" below), plus **5 resource templates** (diagram summary, lint, variables, XML, and an executable-Camunda-7 guide) and **3 modeling-style prompts** (`executable`, `executable-pool`, `collaboration`) that set the diagram-building context for the session.
+3. **32 MCP tools** are exposed (see "Tool Naming" below), plus **5 resource templates** (diagram summary, lint, variables, XML, and an executable-Camunda-8 guide) and **3 modeling-style prompts** (`executable`, `executable-pool`, `collaboration`) that set the diagram-building context for the session.
 4. Each tool handler manipulates the `bpmn-js` modeler API (`modeling`, `elementFactory`, `elementRegistry`) and returns JSON or raw XML/SVG.
-5. `camunda-bpmn-moddle` is registered as a moddle extension, enabling Camunda-specific attributes (e.g. `camunda:assignee`, `camunda:class`, `camunda:formKey`) on elements.
+5. `zeebe-bpmn-moddle` is registered as a moddle extension, enabling Zeebe-specific attributes (e.g. `zeebe:AssignmentDefinition`, `zeebe:TaskDefinition`, `zeebe:FormDefinition`) on elements.
 6. Each handler file **co-locates** its MCP tool definition (`TOOL_DEFINITION`) alongside the handler function, preventing definition drift.
 7. **bpmnlint** is integrated for BPMN validation. The `McpPluginResolver` wraps bpmnlint's `NodeResolver` to support both npm plugins (`bpmnlint-plugin-camunda-compat`) and the bundled custom plugin (`bpmnlint-plugin-bpmn-mcp`). Mutating tool handlers call `appendLintFeedback()` to append error-level lint issues to their response.
 8. **Label adjustment** runs after layout and connection operations, using geometry-based scoring to position external labels away from connection paths.
@@ -94,7 +94,7 @@ npm test           # vitest run
 
 `make` targets mirror npm scripts — run `make help` to list them.
 
-**Bundling:** esbuild bundles all source + `@modelcontextprotocol/sdk` + `camunda-bpmn-moddle` into one CJS file. `jsdom`, `bpmn-js`, `bpmn-auto-layout`, `bpmnlint`, and `bpmnlint-plugin-camunda-compat` are externalised (remain in `node_modules`).
+**Bundling:** esbuild bundles all source + `@modelcontextprotocol/sdk` + `zeebe-bpmn-moddle` into one CJS file. `jsdom`, `bpmn-js`, `bpmn-auto-layout`, `bpmnlint`, and `bpmnlint-plugin-camunda-compat` are externalised (remain in `node_modules`).
 
 **CLI options:**
 - `--persist-dir <dir>` — enable file-backed diagram persistence
@@ -156,7 +156,7 @@ Individual ADRs are in [`agents/adrs/`](agents/adrs/):
 - The `jsdom` instance and `BpmnModeler` constructor are lazily initialized on first use and then reused.
 - bpmnlint requires moddle root elements (not raw XML). Use `getDefinitionsFromModeler()` from `src/linter.ts` to extract the `bpmn:Definitions` element from a bpmn-js modeler.
 - **Do not cache a bpmnlint `Linter` instance.** Some rules use closure state that accumulates across calls. `createLinter()` in `src/linter.ts` always creates a fresh instance.
-- The `DEFAULT_LINT_CONFIG` extends `bpmnlint:recommended`, `plugin:camunda-compat/camunda-platform-7-24`, and `plugin:bpmn-mcp/recommended`. It downgrades `label-required` and `no-disconnected` to warnings (AI callers build diagrams incrementally), and disables `no-overlapping-elements` (false positives in headless mode).
+- The `DEFAULT_LINT_CONFIG` extends `bpmnlint:recommended`, `plugin:camunda-compat/camunda-cloud-8-9`, and `plugin:bpmn-mcp/recommended`. It downgrades `label-required` and `no-disconnected` to warnings (AI callers build diagrams incrementally), and disables `no-overlapping-elements` (false positives in headless mode).
 - Custom bpmnlint rules live in `src/bpmnlint-plugin-bpmn-mcp/` and are registered as a proper bpmnlint plugin via `McpPluginResolver` in `src/linter.ts`. They can be referenced in config as `plugin:bpmn-mcp/recommended` or individually as `bpmn-mcp/rule-name`.
 - Element IDs prefer short 2-part naming: `UserTask_EnterName`, `Flow_Done`. On collision, falls back to 3-part with random middle: `UserTask_a1b2c3d_EnterName`, `Flow_m4n5p6q_Done`. Unnamed elements use `StartEvent_x9y8z7w`. The random 7-char part ensures uniqueness for copy/paste across diagrams.
 - The rebuild layout engine in `src/rebuild/` walks the process graph topologically and positions elements using `STANDARD_BPMN_GAP` spacing. Containers (subprocesses, participants) are rebuilt inside-out: deepest first. Connections are re-routed via `modeling.layoutConnection()`.

@@ -2,7 +2,7 @@
  * Custom bpmnlint rule: receive-task-missing-message
  *
  * Warns when a bpmn:ReceiveTask has no messageRef.
- * Without a message reference, the Camunda 7 (Operaton) engine does not
+ * Without a message reference, the engine does not
  * know which message to listen for and the task will never complete
  * via message correlation.
  */

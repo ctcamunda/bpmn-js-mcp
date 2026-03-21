@@ -28,14 +28,7 @@ export interface SetEventDefinitionArgs {
   messageRef?: { id: string; name?: string };
   signalRef?: { id: string; name?: string };
   escalationRef?: { id: string; name?: string; escalationCode?: string };
-  /** Variable mappings to pass with a signal throw event (camunda:In on SignalEventDefinition). */
-  inMappings?: Array<{
-    source?: string;
-    sourceExpression?: string;
-    target?: string;
-    variables?: 'all';
-    local?: boolean;
-  }>;
+
 }
 
 // ── Type-specific attribute builders ───────────────────────────────────────
@@ -92,30 +85,7 @@ const REF_RESOLVERS: Record<
   },
 };
 
-// ── Camunda extension attributes on event definitions ──────────────────────
 
-/** Map of eventDefinitionType → Camunda property names to copy from defProps. */
-const CAMUNDA_EVENT_DEF_PROPS: Record<string, string[]> = {
-  'bpmn:ConditionalEventDefinition': ['variableName', 'variableEvents'],
-  'bpmn:ErrorEventDefinition': ['errorCodeVariable', 'errorMessageVariable'],
-  'bpmn:EscalationEventDefinition': ['escalationCodeVariable'],
-  'bpmn:SignalEventDefinition': ['async'],
-};
-
-/** Apply Camunda-specific extension props (variableName, errorCodeVariable, etc.) to an event definition. */
-function applyCamundaEventDefProps(
-  eventDef: any,
-  eventDefinitionType: string,
-  defProps: Record<string, any>
-): void {
-  const propNames = CAMUNDA_EVENT_DEF_PROPS[eventDefinitionType];
-  if (!propNames) return;
-  for (const prop of propNames) {
-    if (defProps[prop] != null) {
-      eventDef[prop] = defProps[prop];
-    }
-  }
-}
 
 // ── Ref-type validation ────────────────────────────────────────────────────
 
@@ -143,47 +113,6 @@ function validateRefArgs(eventDefinitionType: string, args: Record<string, any>)
       );
     }
   }
-}
-
-// ── Signal variable mapping helpers ────────────────────────────────────────
-
-interface InMappingSpec {
-  source?: string;
-  sourceExpression?: string;
-  target?: string;
-  variables?: 'all';
-  local?: boolean;
-}
-
-/** Apply camunda:In variable mappings as extension elements on a SignalEventDefinition. */
-function applySignalInMappings(
-  moddle: any,
-  eventDef: any,
-  eventDefinitionType: string,
-  inMappings: InMappingSpec[]
-): void {
-  if (eventDefinitionType !== 'bpmn:SignalEventDefinition') {
-    throw typeMismatchError('eventDefinitionType', eventDefinitionType, [
-      'bpmn:SignalEventDefinition',
-    ]);
-  }
-  const extElements = moddle.create('bpmn:ExtensionElements', { values: [] });
-  extElements.$parent = eventDef;
-  for (const mapping of inMappings) {
-    const attrs: Record<string, any> = {};
-    if (mapping.variables === 'all') {
-      attrs.variables = 'all';
-    } else {
-      if (mapping.source) attrs.source = mapping.source;
-      if (mapping.sourceExpression) attrs.sourceExpression = mapping.sourceExpression;
-      if (mapping.target) attrs.target = mapping.target;
-    }
-    if (mapping.local) attrs.local = true;
-    const inEl = moddle.create('camunda:In', attrs);
-    inEl.$parent = extElements;
-    (extElements.values as unknown[]).push(inEl);
-  }
-  eventDef.extensionElements = extElements;
 }
 
 /** Build event definition attributes from type-specific properties. */
@@ -217,7 +146,6 @@ export async function handleSetEventDefinition(args: SetEventDefinitionArgs): Pr
     messageRef,
     signalRef,
     escalationRef,
-    inMappings,
   } = args;
 
   // Validate that ref args match the event definition type
@@ -259,14 +187,6 @@ export async function handleSetEventDefinition(args: SetEventDefinitionArgs): Pr
   }
 
   const eventDef = moddle.create(eventDefinitionType, eventDefAttrs);
-
-  // Apply Camunda extension attributes on the event definition itself
-  applyCamundaEventDefProps(eventDef, eventDefinitionType, defProps);
-
-  // Apply camunda:In variable mappings for SignalEventDefinition
-  if (inMappings && inMappings.length > 0) {
-    applySignalInMappings(moddle, eventDef, eventDefinitionType, inMappings);
-  }
 
   // Replace existing event definitions
   bo.eventDefinitions = [eventDef];

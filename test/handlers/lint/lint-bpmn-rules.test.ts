@@ -609,7 +609,7 @@ describe('bpmnlint new rules', () => {
       expect(issues[0].message).toContain('assignee');
     });
 
-    test('does not warn when user task has camunda:assignee', async () => {
+    test('does not warn when user task has zeebe:assignmentDefinition (assignee)', async () => {
       const diagramId = await createDiagram('Has Assignee');
       const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
       const task = await addElement(diagramId, 'bpmn:UserTask', { name: 'Review Order' });
@@ -621,7 +621,7 @@ describe('bpmnlint new rules', () => {
       await handleSetProperties({
         diagramId,
         elementId: task,
-        properties: { 'camunda:assignee': 'john' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'john' } },
       });
 
       const res = parseResult(
@@ -640,7 +640,7 @@ describe('bpmnlint new rules', () => {
       expect(issues.length).toBe(0);
     });
 
-    test('does not warn when user task has camunda:candidateGroups', async () => {
+    test('does not warn when user task has zeebe:assignmentDefinition (candidateGroups)', async () => {
       const diagramId = await createDiagram('Has Candidates');
       const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
       const task = await addElement(diagramId, 'bpmn:UserTask', { name: 'Review Order' });
@@ -652,7 +652,7 @@ describe('bpmnlint new rules', () => {
       await handleSetProperties({
         diagramId,
         elementId: task,
-        properties: { 'camunda:candidateGroups': 'managers' },
+        properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'managers' } },
       });
 
       const res = parseResult(
@@ -923,7 +923,7 @@ describe('New bpmnlint rules (pool-size, message-flow, alignment, grouping)', ()
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
   id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:collaboration id="Collab_1">
     <bpmn:participant id="Pool_1" name="Process" processRef="Process_1" />
@@ -938,9 +938,21 @@ describe('New bpmnlint rules (pool-size, message-flow, alignment, grouping)', ()
         <bpmn:flowNodeRef>Task_Also_Support</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
-    <bpmn:userTask id="Task_Review" name="Review Ticket" camunda:assignee="support-agent" />
-    <bpmn:userTask id="Task_Escalate" name="Escalate Issue" camunda:assignee="manager" />
-    <bpmn:userTask id="Task_Also_Support" name="Follow Up" camunda:assignee="support-agent" />
+    <bpmn:userTask id="Task_Review" name="Review Ticket">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="support-agent" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Escalate" name="Escalate Issue">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="manager" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Also_Support" name="Follow Up">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="support-agent" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collab_1">
@@ -991,7 +1003,7 @@ describe('New bpmnlint rules (pool-size, message-flow, alignment, grouping)', ()
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
   id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:collaboration id="Collab_1">
     <bpmn:participant id="Pool_1" name="Process" processRef="Process_1" />
@@ -1006,9 +1018,21 @@ describe('New bpmnlint rules (pool-size, message-flow, alignment, grouping)', ()
         <bpmn:flowNodeRef>Task_Approve</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
-    <bpmn:userTask id="Task_Review" name="Review Ticket" camunda:assignee="support-agent" />
-    <bpmn:userTask id="Task_FollowUp" name="Follow Up" camunda:assignee="support-agent" />
-    <bpmn:userTask id="Task_Approve" name="Approve" camunda:assignee="manager" />
+    <bpmn:userTask id="Task_Review" name="Review Ticket">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="support-agent" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_FollowUp" name="Follow Up">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="support-agent" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Approve" name="Approve">
+      <bpmn:extensionElements>
+        <zeebe:assignmentDefinition assignee="manager" />
+      </bpmn:extensionElements>
+    </bpmn:userTask>
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collab_1">
@@ -1060,12 +1084,12 @@ describe('New bpmnlint rules (pool-size, message-flow, alignment, grouping)', ()
       await handleSetProperties({
         diagramId,
         elementId: t1,
-        properties: { 'camunda:assignee': 'admin' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'admin' } },
       });
       await handleSetProperties({
         diagramId,
         elementId: t2,
-        properties: { 'camunda:assignee': 'admin' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'admin' } },
       });
 
       const res = parseResult(
@@ -1128,7 +1152,7 @@ describe('bpmnlint new rules batch 3', () => {
       expect(issues[0].message).toContain('no implementation');
     });
 
-    test('passes when service task has camunda:class', async () => {
+    test('passes when service task has zeebe:taskDefinition', async () => {
       const diagramId = await createDiagram('Service Task Test');
       const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
       const task = await addElement(diagramId, 'bpmn:ServiceTask', {
@@ -1140,97 +1164,7 @@ describe('bpmnlint new rules batch 3', () => {
       await handleSetProperties({
         diagramId,
         elementId: task,
-        properties: { 'camunda:class': 'com.example.ProcessOrder' },
-      });
-
-      const res = parseResult(
-        await handleLintDiagram({
-          diagramId,
-          config: {
-            rules: { 'bpmn-mcp/service-task-missing-implementation': 'error' },
-          },
-        })
-      );
-
-      const issues = res.issues.filter(
-        (i: any) => i.rule === 'bpmn-mcp/service-task-missing-implementation'
-      );
-      expect(issues.length).toBe(0);
-    });
-
-    test('passes when service task has camunda:expression', async () => {
-      const diagramId = await createDiagram('Service Task Test');
-      const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
-      const task = await addElement(diagramId, 'bpmn:ServiceTask', {
-        name: 'Process Order',
-      });
-      const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End' });
-      await connectAll(diagramId, start, task, end);
-
-      await handleSetProperties({
-        diagramId,
-        elementId: task,
-        properties: { 'camunda:expression': '${orderService.process(execution)}' },
-      });
-
-      const res = parseResult(
-        await handleLintDiagram({
-          diagramId,
-          config: {
-            rules: { 'bpmn-mcp/service-task-missing-implementation': 'error' },
-          },
-        })
-      );
-
-      const issues = res.issues.filter(
-        (i: any) => i.rule === 'bpmn-mcp/service-task-missing-implementation'
-      );
-      expect(issues.length).toBe(0);
-    });
-
-    test('passes when service task has camunda:type=external with topic', async () => {
-      const diagramId = await createDiagram('Service Task Test');
-      const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
-      const task = await addElement(diagramId, 'bpmn:ServiceTask', {
-        name: 'Process Order',
-      });
-      const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End' });
-      await connectAll(diagramId, start, task, end);
-
-      await handleSetProperties({
-        diagramId,
-        elementId: task,
-        properties: { 'camunda:type': 'external', 'camunda:topic': 'process-order' },
-      });
-
-      const res = parseResult(
-        await handleLintDiagram({
-          diagramId,
-          config: {
-            rules: { 'bpmn-mcp/service-task-missing-implementation': 'error' },
-          },
-        })
-      );
-
-      const issues = res.issues.filter(
-        (i: any) => i.rule === 'bpmn-mcp/service-task-missing-implementation'
-      );
-      expect(issues.length).toBe(0);
-    });
-
-    test('passes when service task has camunda:delegateExpression', async () => {
-      const diagramId = await createDiagram('Service Task Test');
-      const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
-      const task = await addElement(diagramId, 'bpmn:ServiceTask', {
-        name: 'Process Order',
-      });
-      const end = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End' });
-      await connectAll(diagramId, start, task, end);
-
-      await handleSetProperties({
-        diagramId,
-        elementId: task,
-        properties: { 'camunda:delegateExpression': '${orderDelegate}' },
+        properties: { 'zeebe:taskDefinition': { type: 'process-order' } },
       });
 
       const res = parseResult(

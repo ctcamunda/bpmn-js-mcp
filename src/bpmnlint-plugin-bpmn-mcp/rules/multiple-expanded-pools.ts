@@ -2,9 +2,9 @@
  * Custom bpmnlint rule: multiple-expanded-pools
  *
  * Warns when a collaboration has more than one expanded participant (pool).
- * In Camunda 7 / Operaton, only one pool can be deployed and executed.
- * Additional pools should be collapsed (no internal flow elements) and
- * exist solely to document message flow endpoints.
+ * In a single BPMN deployment, typically only one pool contains the executable
+ * process. Additional pools should be collapsed (no internal flow elements)
+ * and exist solely to document message flow endpoints.
  *
  * Valid pattern:
  *   Pool A (expanded, executable) ←→ Pool B (collapsed, documentation-only)
@@ -69,7 +69,7 @@ export default function multipleExpandedPools() {
       reporter.report(
         node.id,
         `${executablePools.length} expanded pools are marked isExecutable (${execNames}). ` +
-          'In Camunda 7 / Operaton, only one pool can be deployed and executed. ' +
+          'Typically only one pool is deployed and executed per BPMN file. ' +
           'If these represent roles within the same organization, convert to lanes within a single pool ' +
           'using create_bpmn_lanes (with mergeFrom). Otherwise, make non-executable pools collapsed ' +
           '(set collapsed: true).'
@@ -79,7 +79,7 @@ export default function multipleExpandedPools() {
       reporter.report(
         node.id,
         `${expanded.length} expanded pools found (${names}). ` +
-          'In Camunda 7 / Operaton, only one pool can be deployed and executed. ' +
+          'Typically only one pool is deployed and executed per BPMN file. ' +
           'Make non-executable pools collapsed (set collapsed: true in create_bpmn_participant) — ' +
           'collapsed pools have no internal flow and exist only to document message flow endpoints.'
       );

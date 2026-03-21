@@ -93,12 +93,12 @@ describe('export_bpmn — enhancements', () => {
         filePath: outPath,
       });
 
-      // File should contain XML (first content block)
+      // File should contain XML
       const fileContent = fs.readFileSync(outPath, 'utf-8');
       expect(fileContent).toContain('<bpmn:definitions');
 
-      // Response should include both XML and SVG
-      expect(res.content[0].text).toContain('<bpmn:definitions');
+      // Response: content[0] is status message (XML suppressed), content[1] is SVG
+      expect(res.content[0].text).toContain('Written to');
       expect(res.content[1].text).toContain('<svg');
     });
 

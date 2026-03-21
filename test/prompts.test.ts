@@ -98,11 +98,11 @@ describe('getPrompt', () => {
     }
   });
 
-  test('executable prompt clarifies that external task output mappings come from the worker', () => {
+  test('executable prompt describes Zeebe service task configuration', () => {
     const result = getPrompt('executable');
     const text = result.messages[0].content.text;
-    // Guidance to prevent agents from putting static expressions on external tasks
-    expect(text).toMatch(/output mappings? on external tasks?.*worker/i);
+    // Guidance for Zeebe job worker type configuration
+    expect(text).toMatch(/zeebe:type/i);
   });
 
   test('executable prompt warns about afterElementId when using add_bpmn_element_chain', () => {

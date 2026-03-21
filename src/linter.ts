@@ -31,7 +31,7 @@ import * as path from 'node:path';
 export const DEFAULT_LINT_CONFIG: LintConfig = {
   extends: [
     'bpmnlint:recommended',
-    'plugin:camunda-compat/camunda-platform-7-24',
+    'plugin:camunda-compat/camunda-cloud-8-9',
     'plugin:bpmn-mcp/recommended',
   ],
   rules: {
@@ -39,10 +39,8 @@ export const DEFAULT_LINT_CONFIG: LintConfig = {
     'label-required': 'warn', // downgrade: AI callers may add labels incrementally
     'no-overlapping-elements': 'off', // layout handles this; false positives in headless mode
     'no-disconnected': 'warn', // downgrade: diagrams are built incrementally
-    'no-inclusive-gateway': 'info', // informational: InclusiveGateway is valid in Camunda 7 / Operaton
+    'no-inclusive-gateway': 'info', // informational: InclusiveGateway is valid
     'fake-join': 'info', // downgrade: boundary-event retry patterns produce valid fake-joins
-    'camunda-compat/history-time-to-live': 'warn', // upgrade: required for Camunda 7 / Operaton history cleanup
-    'camunda-compat/inclusive-gateway': 'info', // informational: Camunda 7 supports InclusiveGateway joins
     'bpmn-mcp/gateway-pair-mismatch': 'info', // informational: split-without-join is valid when branches terminate
   },
 };

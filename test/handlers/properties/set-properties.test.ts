@@ -7,7 +7,7 @@ describe('set_bpmn_element_properties', () => {
     clearDiagrams();
   });
 
-  test('sets camunda properties on an element', async () => {
+  test('sets zeebe assignment definition on a user task', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:UserTask', {
       name: 'Review',
@@ -17,15 +17,16 @@ describe('set_bpmn_element_properties', () => {
       await handleSetProperties({
         diagramId,
         elementId: taskId,
-        properties: { 'camunda:assignee': 'john' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'john' } },
       })
     );
     expect(res.success).toBe(true);
-    expect(res.updatedProperties).toContain('camunda:assignee');
+    expect(res.updatedProperties).toContain('zeebe:assignmentDefinition');
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:assignee');
+    expect(xml).toContain('zeebe:assignmentDefinition');
+    expect(xml).toContain('assignee="john"');
   });
 
   test('throws for unknown element', async () => {
@@ -39,39 +40,40 @@ describe('set_bpmn_element_properties', () => {
     ).rejects.toThrow(/Element not found/);
   });
 
-  test('skips empty-string camunda extension attributes', async () => {
+  test('sets zeebe task definition on a service task', async () => {
     const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', {
-      name: 'Approve',
+    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
+      name: 'Process',
     });
 
-    // Set an empty dueDate — should be omitted from XML
     await handleSetProperties({
       diagramId,
       elementId: taskId,
-      properties: { 'camunda:dueDate': '' },
+      properties: { 'zeebe:taskDefinition': { type: 'process-order', retries: 3 } },
     });
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text as string;
-    // Empty string attribute should not appear in the XML
-    expect(xml).not.toContain('camunda:dueDate=""');
+    expect(xml).toContain('zeebe:taskDefinition');
+    expect(xml).toContain('type="process-order"');
+    expect(xml).toContain('retries="3"');
   });
 
-  test('still sets non-empty camunda extension attributes', async () => {
+  test('sets zeebe called decision on a business rule task', async () => {
     const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', {
-      name: 'Approve',
+    const taskId = await addElement(diagramId, 'bpmn:BusinessRuleTask', {
+      name: 'Evaluate',
     });
 
     await handleSetProperties({
       diagramId,
       elementId: taskId,
-      properties: { 'camunda:dueDate': '${dateTime().plusDays(3)}' },
+      properties: { 'zeebe:calledDecision': { decisionId: 'myDecision', resultVariable: 'result' } },
     });
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text as string;
-    expect(xml).toContain('camunda:dueDate=');
+    expect(xml).toContain('zeebe:calledDecision');
+    expect(xml).toContain('decisionId="myDecision"');
   });
 });

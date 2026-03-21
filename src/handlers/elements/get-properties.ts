@@ -1,8 +1,8 @@
 /**
  * Handler for get_element_properties tool.
  *
- * Returns standard BPMN attributes, Camunda extension properties,
- * extension elements (I/O mapping, form data), connections, and
+ * Returns standard BPMN attributes, Zeebe extension properties,
+ * extension elements (I/O mapping, form definition), connections, and
  * event definitions for a given element.
  */
 // @readonly
@@ -15,208 +15,152 @@ export interface GetPropertiesArgs {
   elementId: string;
 }
 
-// ── Sub-function: Camunda extension attributes ─────────────────────────────
+// ── Sub-function: Zeebe extension attributes ───────────────────────────────
 
-/** Known Camunda properties that may appear directly on the business object. */
-const CAMUNDA_DIRECT_PROPS = [
-  'assignee',
-  'candidateGroups',
-  'candidateUsers',
-  'dueDate',
-  'followUpDate',
-  'formKey',
-  'formRef',
-  'priority',
-  'class',
-  'delegateExpression',
-  'expression',
-  'resultVariable',
-  'topic',
-  'type',
-  'errorCodeVariable',
-  'errorMessageVariable',
-  'asyncBefore',
-  'asyncAfter',
-  'exclusive',
-  'jobPriority',
-  'taskPriority',
-  'historyTimeToLive',
-  'isStartableInTasklist',
-  'versionTag',
-  'resource',
-] as const;
-
-function serializeCamundaAttrs(bo: any): Record<string, any> | undefined {
-  const camundaAttrs: Record<string, any> = {};
+function serializeZeebeAttrs(bo: any): Record<string, any> | undefined {
+  const zeebeAttrs: Record<string, any> = {};
   // From $attrs (explicit namespace prefixed attributes)
   if (bo.$attrs) {
     for (const [key, value] of Object.entries(bo.$attrs)) {
-      if (key.startsWith('camunda:')) {
-        camundaAttrs[key] = value;
+      if (key.startsWith('zeebe:')) {
+        zeebeAttrs[key] = value;
       }
     }
   }
-  // From direct BO properties (camunda moddle descriptor)
-  for (const prop of CAMUNDA_DIRECT_PROPS) {
-    if (bo[prop] !== undefined && bo[prop] !== null) {
-      camundaAttrs[`camunda:${prop}`] = bo[prop];
-    }
-  }
-  return Object.keys(camundaAttrs).length > 0 ? camundaAttrs : undefined;
+  return Object.keys(zeebeAttrs).length > 0 ? zeebeAttrs : undefined;
 }
 
-// ── Sub-function: InputOutput extension serialisation ──────────────────────
+// ── Sub-function: zeebe:IoMapping serialisation ────────────────────────────
 
-function serializeParameter(p: any): Record<string, any> {
-  const result: Record<string, any> = { name: p.name };
-  if (p.value !== undefined) result.value = p.value;
-  if (p.definition) {
-    const def = p.definition;
-    if (def.$type === 'camunda:List' && def.items) {
-      result.list = def.items.map((item: any) => item.value ?? item);
-    } else if (def.$type === 'camunda:Map' && def.entries) {
-      result.map = def.entries.reduce((acc: Record<string, string>, entry: any) => {
-        acc[entry.key] = entry.value;
-        return acc;
-      }, {});
-    } else if (def.$type === 'camunda:Script') {
-      result.script = {
-        scriptFormat: def.scriptFormat,
-        ...(def.resource ? { resource: def.resource } : { value: def.value }),
-      };
-    }
-  }
-  return result;
-}
-
-function serializeInputOutput(ext: any): Record<string, any> {
-  const io: any = { type: 'camunda:InputOutput' };
+function serializeIoMapping(ext: any): Record<string, any> {
+  const io: any = { type: 'zeebe:IoMapping' };
   if (ext.inputParameters) {
-    io.inputParameters = ext.inputParameters.map(serializeParameter);
+    io.inputParameters = ext.inputParameters.map((p: any) => ({
+      source: p.source,
+      target: p.target,
+    }));
   }
   if (ext.outputParameters) {
-    io.outputParameters = ext.outputParameters.map(serializeParameter);
+    io.outputParameters = ext.outputParameters.map((p: any) => ({
+      source: p.source,
+      target: p.target,
+    }));
   }
   return io;
 }
 
-// ── Sub-function: FormData extension serialisation ─────────────────────────
+// ── Sub-function: zeebe:TaskDefinition serialisation ───────────────────────
 
-function serializeFormField(f: any): Record<string, any> {
-  const field: any = {
-    id: f.id,
-    label: f.label,
-    type: f.type,
-    defaultValue: f.defaultValue,
-  };
-  if (f.datePattern) field.datePattern = f.datePattern;
-  if (f.values?.length) {
-    field.values = f.values.map((v: any) => ({ id: v.id, name: v.name }));
+function serializeTaskDefinition(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:TaskDefinition' };
+  if (ext.type) result.workerType = ext.type;
+  if (ext.retries) result.retries = ext.retries;
+  return result;
+}
+
+// ── Sub-function: zeebe:AssignmentDefinition serialisation ─────────────────
+
+function serializeAssignmentDefinition(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:AssignmentDefinition' };
+  if (ext.assignee) result.assignee = ext.assignee;
+  if (ext.candidateGroups) result.candidateGroups = ext.candidateGroups;
+  if (ext.candidateUsers) result.candidateUsers = ext.candidateUsers;
+  return result;
+}
+
+// ── Sub-function: zeebe:FormDefinition serialisation ───────────────────────
+
+function serializeFormDefinition(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:FormDefinition' };
+  if (ext.formId) result.formId = ext.formId;
+  if (ext.formKey) result.formKey = ext.formKey;
+  return result;
+}
+
+// ── Sub-function: zeebe:CalledDecision serialisation ───────────────────────
+
+function serializeCalledDecision(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:CalledDecision' };
+  if (ext.decisionId) result.decisionId = ext.decisionId;
+  if (ext.resultVariable) result.resultVariable = ext.resultVariable;
+  return result;
+}
+
+// ── Sub-function: zeebe:CalledElement serialisation ────────────────────────
+
+function serializeCalledElement(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:CalledElement' };
+  if (ext.processId) result.processId = ext.processId;
+  if (ext.propagateAllChildVariables != null) result.propagateAllChildVariables = ext.propagateAllChildVariables;
+  return result;
+}
+
+// ── Sub-function: zeebe:Script serialisation ───────────────────────────────
+
+function serializeZeebeScript(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:Script' };
+  if (ext.expression) result.expression = ext.expression;
+  if (ext.resultVariable) result.resultVariable = ext.resultVariable;
+  return result;
+}
+
+// ── Sub-function: zeebe:Properties serialisation ───────────────────────────
+
+function serializeZeebeProperties(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:Properties' };
+  if (ext.properties?.length) {
+    result.properties = ext.properties.reduce((acc: Record<string, string>, p: any) => {
+      acc[p.name] = p.value;
+      return acc;
+    }, {});
   }
-  if (f.validation?.constraints?.length) {
-    field.validation = f.validation.constraints.map((c: any) => ({
-      name: c.name,
-      config: c.config,
+  return result;
+}
+
+// ── Sub-function: zeebe:UserTaskForm serialisation ─────────────────────────
+
+function serializeUserTaskForm(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:UserTaskForm' };
+  if (ext.body) result.body = ext.body;
+  return result;
+}
+
+// ── Sub-function: zeebe:ExecutionListeners serialisation ───────────────────
+
+function serializeExecutionListeners(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:ExecutionListeners' };
+  if (ext.listeners?.length) {
+    result.listeners = ext.listeners.map((l: any) => ({
+      eventType: l.eventType,
+      type: l.type,
+      ...(l.retries ? { retries: l.retries } : {}),
     }));
   }
-  if (f.properties?.values?.length) {
-    field.properties = f.properties.values.reduce((acc: Record<string, string>, p: any) => {
-      acc[p.id] = p.value;
-      return acc;
-    }, {});
-  }
-  return field;
-}
-
-function serializeFormData(ext: any): Record<string, any> {
-  const fd: any = { type: 'camunda:FormData' };
-  if (ext.fields) {
-    fd.fields = ext.fields.map(serializeFormField);
-  }
-  if (ext.businessKey) fd.businessKey = ext.businessKey;
-  return fd;
-}
-
-// ── Sub-function: all extension elements ───────────────────────────────────
-
-// ── Sub-function: Listener extension serialisation ─────────────────────────
-
-function serializeListener(ext: any): Record<string, any> {
-  const listener: Record<string, any> = { type: ext.$type, event: ext.event };
-  if (ext['class']) listener.class = ext['class'];
-  if (ext.delegateExpression) listener.delegateExpression = ext.delegateExpression;
-  if (ext.expression) listener.expression = ext.expression;
-  if (ext.script) {
-    listener.script = {
-      scriptFormat: ext.script.scriptFormat,
-      value: ext.script.value,
-    };
-  }
-  if (ext.fields?.length) {
-    listener.fields = ext.fields.map((f: any) => {
-      const field: Record<string, any> = { name: f.name };
-      if (f.stringValue != null) field.stringValue = f.stringValue;
-      if (f.string != null) field.string = f.string;
-      if (f.expression != null) field.expression = f.expression;
-      return field;
-    });
-  }
-  return listener;
-}
-
-// ── Sub-function: camunda:In / camunda:Out serialisation ───────────────────
-
-function serializeInOut(ext: any): Record<string, any> {
-  const result: Record<string, any> = { type: ext.$type };
-  if (ext.source) result.source = ext.source;
-  if (ext.target) result.target = ext.target;
-  if (ext.sourceExpression) result.sourceExpression = ext.sourceExpression;
-  if (ext.variables) result.variables = ext.variables;
-  if (ext.local) result.local = ext.local;
-  if (ext.businessKey) result.businessKey = ext.businessKey;
   return result;
 }
 
-// ── Sub-function: camunda:FailedJobRetryTimeCycle serialisation ─────────────
+// ── Sub-function: zeebe:TaskListeners serialisation ────────────────────────
 
-function serializeRetryTimeCycle(ext: any): Record<string, any> {
-  return { type: ext.$type, body: ext.body };
-}
-
-// ── Sub-function: camunda:Connector serialisation ──────────────────────────
-
-function serializeConnector(ext: any): Record<string, any> {
-  const result: Record<string, any> = { type: ext.$type };
-  if (ext.connectorId) result.connectorId = ext.connectorId;
-  if (ext.inputOutput) result.inputOutput = serializeInputOutput(ext.inputOutput);
-  return result;
-}
-
-// ── Sub-function: camunda:Properties serialisation ─────────────────────────
-
-function serializeCamundaProperties(ext: any): Record<string, any> {
-  const result: Record<string, any> = { type: ext.$type };
-  if (ext.values?.length) {
-    result.properties = ext.values.reduce((acc: Record<string, string>, p: any) => {
-      acc[p.name || p.id] = p.value;
-      return acc;
-    }, {});
+function serializeTaskListeners(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:TaskListeners' };
+  if (ext.listeners?.length) {
+    result.listeners = ext.listeners.map((l: any) => ({
+      eventType: l.eventType,
+      type: l.type,
+      ...(l.retries ? { retries: l.retries } : {}),
+    }));
   }
   return result;
 }
 
-// ── Sub-function: camunda:ErrorEventDefinition serialisation ───────────────
+// ── Sub-function: zeebe:LoopCharacteristics serialisation ──────────────────
 
-function serializeCamundaErrorDefinition(ext: any): Record<string, any> {
-  const result: Record<string, any> = { type: ext.$type };
-  if (ext.expression) result.expression = ext.expression;
-  if (ext.errorRef) {
-    result.errorRef = {
-      id: ext.errorRef.id,
-      name: ext.errorRef.name,
-      errorCode: ext.errorRef.errorCode,
-    };
-  }
+function serializeZeebeLoopCharacteristics(ext: any): Record<string, any> {
+  const result: Record<string, any> = { type: 'zeebe:LoopCharacteristics' };
+  if (ext.inputCollection) result.inputCollection = ext.inputCollection;
+  if (ext.inputElement) result.inputElement = ext.inputElement;
+  if (ext.outputCollection) result.outputCollection = ext.outputCollection;
+  if (ext.outputElement) result.outputElement = ext.outputElement;
   return result;
 }
 
@@ -224,16 +168,18 @@ function serializeCamundaErrorDefinition(ext: any): Record<string, any> {
 
 /** Type → serialiser mapping for known extension element types. */
 const EXTENSION_SERIALIZERS: Record<string, (ext: any) => Record<string, any>> = {
-  'camunda:InputOutput': serializeInputOutput,
-  'camunda:FormData': serializeFormData,
-  'camunda:ExecutionListener': serializeListener,
-  'camunda:TaskListener': serializeListener,
-  'camunda:In': serializeInOut,
-  'camunda:Out': serializeInOut,
-  'camunda:FailedJobRetryTimeCycle': serializeRetryTimeCycle,
-  'camunda:Connector': serializeConnector,
-  'camunda:Properties': serializeCamundaProperties,
-  'camunda:ErrorEventDefinition': serializeCamundaErrorDefinition,
+  'zeebe:IoMapping': serializeIoMapping,
+  'zeebe:TaskDefinition': serializeTaskDefinition,
+  'zeebe:AssignmentDefinition': serializeAssignmentDefinition,
+  'zeebe:FormDefinition': serializeFormDefinition,
+  'zeebe:CalledDecision': serializeCalledDecision,
+  'zeebe:CalledElement': serializeCalledElement,
+  'zeebe:Script': serializeZeebeScript,
+  'zeebe:Properties': serializeZeebeProperties,
+  'zeebe:UserTaskForm': serializeUserTaskForm,
+  'zeebe:ExecutionListeners': serializeExecutionListeners,
+  'zeebe:TaskListeners': serializeTaskListeners,
+  'zeebe:LoopCharacteristics': serializeZeebeLoopCharacteristics,
 };
 
 function serializeExtensionElements(bo: any): any[] | undefined {
@@ -303,11 +249,6 @@ function serializeEventDefinitions(bo: any): any[] | undefined {
     if (ed.condition) def.condition = ed.condition.body;
     // Link properties
     if (ed.name) def.name = ed.name;
-    // Camunda extensions on event definitions
-    if (ed.errorCodeVariable) def['camunda:errorCodeVariable'] = ed.errorCodeVariable;
-    if (ed.errorMessageVariable) def['camunda:errorMessageVariable'] = ed.errorMessageVariable;
-    if (ed.variableName) def['camunda:variableName'] = ed.variableName;
-    if (ed.variableEvents) def['camunda:variableEvents'] = ed.variableEvents;
     return def;
   });
 }
@@ -346,8 +287,8 @@ export async function handleGetProperties(args: GetPropertiesArgs): Promise<Tool
     }
   }
 
-  const camunda = serializeCamundaAttrs(bo);
-  if (camunda) result.camundaProperties = camunda;
+  const zeebe = serializeZeebeAttrs(bo);
+  if (zeebe) result.zeebeProperties = zeebe;
 
   const extensions = serializeExtensionElements(bo);
   if (extensions) result.extensionElements = extensions;
@@ -365,7 +306,7 @@ export async function handleGetProperties(args: GetPropertiesArgs): Promise<Tool
 export const TOOL_DEFINITION = {
   name: 'get_bpmn_element_properties',
   description:
-    'Get all properties of an element, including standard BPMN attributes and Camunda extension properties.',
+    'Get all properties of an element, including standard BPMN attributes and Zeebe extension properties.',
   inputSchema: {
     type: 'object',
     properties: {

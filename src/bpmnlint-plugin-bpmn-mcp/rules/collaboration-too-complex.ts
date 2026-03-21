@@ -27,7 +27,7 @@ function ruleFactory(config?: { maxParticipants?: number; maxElements?: number }
         node.id,
         `Collaboration has ${participants.length} participants (threshold: ${maxParticipants}) — ` +
           `consider decomposing into separate deployable processes communicating via messages. ` +
-          `In Camunda 7 / Operaton, only one pool per deployment is executable.`
+          `In Camunda 8, only one pool per deployment is executable.`
       );
     }
 

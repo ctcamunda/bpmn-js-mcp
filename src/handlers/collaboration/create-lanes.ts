@@ -213,8 +213,8 @@ export interface CreateLanesArgs {
   }>;
   /**
    * When true, automatically assigns existing elements in the participant to the
-   * created lanes based on matching lane names to element roles (camunda:assignee
-   * or camunda:candidateGroups). Elements without role matches fall back to
+   * created lanes based on matching lane names to element roles (zeebe:AssignmentDefinition
+   * assignee or candidateGroups). Elements without role matches fall back to
    * type-based grouping (human tasks vs automated tasks).
    */
   autoDistribute?: boolean;

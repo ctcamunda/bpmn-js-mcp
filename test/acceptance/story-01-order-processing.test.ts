@@ -185,94 +185,65 @@ describe('Story 1: Order Processing — From Empty to Executable', () => {
     });
   });
 
-  test('S1-Step04: Set Camunda properties', async () => {
-    // Process: historyTimeToLive (already set to P180D by default, set explicitly)
-    if (s.processId) {
-      await handleSetProperties({
-        diagramId: s.diagramId,
-        elementId: s.processId,
-        properties: { 'camunda:historyTimeToLive': 'P180D' },
-      });
-    }
-
-    // Review Order: assignee + formKey
+  test('S1-Step04: Set Zeebe properties', async () => {
+    // Review Order: assignee
     await handleSetProperties({
       diagramId: s.diagramId,
       elementId: s.reviewOrderId,
       properties: {
-        'camunda:assignee': 'reviewer',
-        'camunda:formKey': 'embedded:app:forms/review.html',
+        'zeebe:assignmentDefinition': { assignee: 'reviewer' },
       },
     });
 
-    // Check Inventory: implementation class
+    // Check Inventory: zeebe:taskDefinition
     await handleSetProperties({
       diagramId: s.diagramId,
       elementId: s.checkInventoryId,
-      properties: { 'camunda:class': 'com.example.CheckInventory' },
+      properties: { 'zeebe:taskDefinition': { type: 'check-inventory' } },
     });
 
     // Confirm Order: candidate groups
     await handleSetProperties({
       diagramId: s.diagramId,
       elementId: s.confirmOrderId,
-      properties: { 'camunda:candidateGroups': 'managers' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'managers' } },
     });
 
     // Verify Review Order properties
     const reviewProps = parseResult(
       await handleGetProperties({ diagramId: s.diagramId, elementId: s.reviewOrderId })
     );
-    expect(reviewProps.camundaProperties?.['camunda:assignee']).toBe('reviewer');
-    expect(reviewProps.camundaProperties?.['camunda:formKey']).toBe(
-      'embedded:app:forms/review.html'
+    const assignDef = reviewProps.extensionElements?.find(
+      (e: any) => e.type === 'zeebe:AssignmentDefinition'
     );
+    expect(assignDef?.assignee).toBe('reviewer');
 
     // Verify Check Inventory properties
     const checkProps = parseResult(
       await handleGetProperties({ diagramId: s.diagramId, elementId: s.checkInventoryId })
     );
-    expect(checkProps.camundaProperties?.['camunda:class']).toBe('com.example.CheckInventory');
+    const taskDef = checkProps.extensionElements?.find(
+      (e: any) => e.type === 'zeebe:TaskDefinition'
+    );
+    expect(taskDef?.workerType).toBe('check-inventory');
 
     await assertStep(s.diagramId, 'S1-Step04', {});
   });
 
-  test('S1-Step05: Add form fields to start event', async () => {
+  test('S1-Step05: Add form to start event', async () => {
     const formRes = parseResult(
       await handleSetFormData({
         diagramId: s.diagramId,
         elementId: s.startId,
-        fields: [
-          { id: 'orderId', label: 'Order ID', type: 'string', validation: [{ name: 'required' }] },
-          {
-            id: 'quantity',
-            label: 'Quantity',
-            type: 'long',
-            validation: [{ name: 'min', config: '1' }],
-          },
-          {
-            id: 'priority',
-            label: 'Priority',
-            type: 'enum',
-            defaultValue: 'medium',
-            values: [
-              { id: 'low', name: 'Low' },
-              { id: 'medium', name: 'Medium' },
-              { id: 'high', name: 'High' },
-            ],
-          },
-        ],
+        formKey: 'camunda-forms:bpmn:order-form',
       })
     );
     expect(formRes.success).toBe(true);
-    expect(formRes.fieldCount).toBe(3);
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId: s.diagramId, skipLint: true }))
       .content[0].text;
-    expect(xml).toContain('camunda:formData');
-    expect(xml).toContain('orderId');
-    expect(xml).toContain('quantity');
-    expect(xml).toContain('priority');
+    expect(xml).toContain('zeebe:formDefinition');
+    expect(xml).toContain('order-form');
 
     await assertStep(s.diagramId, 'S1-Step05', {});
   });
@@ -283,10 +254,10 @@ describe('Story 1: Order Processing — From Empty to Executable', () => {
         diagramId: s.diagramId,
         elementId: s.checkInventoryId,
         inputParameters: [
-          { name: 'orderId', value: '${orderId}' },
-          { name: 'qty', value: '${quantity}' },
+          { source: '=orderId', target: 'fetchOrderId' },
+          { source: '=quantity', target: 'qty' },
         ],
-        outputParameters: [{ name: 'inventoryOk', value: '${available}' }],
+        outputParameters: [{ source: '=available', target: 'inventoryOk' }],
       })
     );
     expect(ioRes.success).toBe(true);
@@ -328,6 +299,13 @@ describe('Story 1: Order Processing — From Empty to Executable', () => {
       })
     );
     s.sendReminderId = sendReminderRes.elementId as string;
+
+    // Set zeebe:taskDefinition on SendTask (required by Zeebe)
+    await handleSetProperties({
+      diagramId: s.diagramId,
+      elementId: s.sendReminderId,
+      properties: { 'zeebe:taskDefinition': { type: 'send-reminder' } },
+    });
 
     await handleConnect({
       diagramId: s.diagramId,

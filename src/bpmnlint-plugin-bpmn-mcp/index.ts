@@ -2,7 +2,7 @@
  * bpmnlint-plugin-bpmn-mcp
  *
  * Custom bpmnlint plugin with rules specific to MCP-generated BPMN models
- * targeting Camunda 7 (Operaton).
+ * targeting Camunda 8 (Zeebe).
  *
  * Rules are registered with the bpmnlint Linter via McpPluginResolver
  * in src/linter.ts, allowing config references like:
@@ -10,7 +10,6 @@
  *   { rules: { 'bpmn-mcp/gateway-missing-default': 'error' } }
  */
 
-import camundaTopicWithoutExternalType from './rules/camunda-topic-without-external-type';
 import gatewayMissingDefault from './rules/gateway-missing-default';
 import namingConvention from './rules/naming-convention';
 import gatewayPairMismatch from './rules/gateway-pair-mismatch';
@@ -68,7 +67,6 @@ import nonInterruptingBoundarySemantics from './rules/non-interrupting-boundary-
  * (2) import and add it here, (3) add to configs.recommended.
  */
 export const rules: Record<string, any> = {
-  'camunda-topic-without-external-type': camundaTopicWithoutExternalType,
   'gateway-missing-default': gatewayMissingDefault,
   'naming-convention': namingConvention,
   'gateway-pair-mismatch': gatewayPairMismatch,
@@ -124,7 +122,6 @@ export const rules: Record<string, any> = {
 export const configs = {
   recommended: {
     rules: {
-      'bpmn-mcp/camunda-topic-without-external-type': 'warn',
       'bpmn-mcp/gateway-missing-default': 'warn',
       'bpmn-mcp/naming-convention': 'warn',
       'bpmn-mcp/gateway-pair-mismatch': 'warn',

@@ -57,17 +57,17 @@ describe('summarize_bpmn_diagram', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:assignee': 'requester' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'requester' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task2,
-      properties: { 'camunda:assignee': 'reviewer' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'reviewer' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task3,
-      properties: { 'camunda:assignee': 'manager' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'manager' } },
     });
 
     const summary = parseResult(await handleSummarizeDiagram({ diagramId }));

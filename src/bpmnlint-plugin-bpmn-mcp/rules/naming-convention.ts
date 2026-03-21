@@ -246,9 +246,9 @@ function isTechnicalName(name: string): boolean {
 
 function ruleFactory() {
   function check(node: any, reporter: any) {
-    // Skip extension elements (e.g. camunda:InputParameter, camunda:OutputParameter)
+    // Skip extension elements (e.g. zeebe:Input, zeebe:Output)
     // which have `name` attributes but are not BPMN model elements with labels
-    if (node.$type && node.$type.startsWith('camunda:')) return;
+    if (node.$type && (node.$type.startsWith('zeebe:') || node.$type.startsWith('camunda:'))) return;
     if (!node.id) return;
 
     const name = node.name;

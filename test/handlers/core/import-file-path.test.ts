@@ -18,10 +18,10 @@ const XML_FILE_A = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="Start_1" name="Begin A" />
     <bpmn:task id="Task_A" name="Task Alpha" />
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_A" />
@@ -47,10 +47,10 @@ const XML_FILE_B = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="Start_B" name="Begin B" />
     <bpmn:task id="Task_B1" name="Task Beta One" />
     <bpmn:task id="Task_B2" name="Task Beta Two" />

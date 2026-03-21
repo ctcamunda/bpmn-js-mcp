@@ -65,7 +65,7 @@ export interface ExtensionElements {
   values: ExtensionElement[];
 }
 
-/** A single extension element (camunda:InputOutput, camunda:FormData, etc.). */
+/** A single extension element (zeebe:IoMapping, zeebe:TaskDefinition, etc.). */
 export interface ExtensionElement {
   $type: string;
   $parent?: ExtensionElements;

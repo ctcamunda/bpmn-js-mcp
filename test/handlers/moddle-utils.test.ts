@@ -107,18 +107,18 @@ describe('upsertExtensionElement', () => {
     const element = elementRegistry.get(result.elementId);
     const modeling = getService(diagram.modeler, 'modeling');
 
-    const formData = moddle.create('camunda:FormData', { fields: [] });
+    const formDef = moddle.create('zeebe:FormDefinition', { formId: 'testForm' });
     upsertExtensionElement(
       moddle,
       element.businessObject,
       modeling,
       element,
-      'camunda:FormData',
-      formData
+      'zeebe:FormDefinition',
+      formDef
     );
 
     const exts = element.businessObject.extensionElements?.values ?? [];
-    expect(exts.some((v: any) => v.$type === 'camunda:FormData')).toBe(true);
+    expect(exts.some((v: any) => v.$type === 'zeebe:FormDefinition')).toBe(true);
   });
 
   test('replaces an existing extension element of the same type', async () => {
@@ -137,31 +137,31 @@ describe('upsertExtensionElement', () => {
     const element = elementRegistry.get(result.elementId);
     const modeling = getService(diagram.modeler, 'modeling');
 
-    // Add first FormData
-    const fd1 = moddle.create('camunda:FormData', { fields: [] });
+    // Add first FormDefinition
+    const fd1 = moddle.create('zeebe:FormDefinition', { formId: 'first' });
     upsertExtensionElement(
       moddle,
       element.businessObject,
       modeling,
       element,
-      'camunda:FormData',
+      'zeebe:FormDefinition',
       fd1
     );
-    // Add second FormData — should replace the first
-    const fd2 = moddle.create('camunda:FormData', { fields: [] });
+    // Add second FormDefinition — should replace the first
+    const fd2 = moddle.create('zeebe:FormDefinition', { formId: 'second' });
     upsertExtensionElement(
       moddle,
       element.businessObject,
       modeling,
       element,
-      'camunda:FormData',
+      'zeebe:FormDefinition',
       fd2
     );
 
     const exts = element.businessObject.extensionElements?.values ?? [];
-    const formDataEntries = exts.filter((v: any) => v.$type === 'camunda:FormData');
-    expect(formDataEntries).toHaveLength(1);
-    expect(formDataEntries[0]).toBe(fd2);
+    const formDefEntries = exts.filter((v: any) => v.$type === 'zeebe:FormDefinition');
+    expect(formDefEntries).toHaveLength(1);
+    expect(formDefEntries[0]).toBe(fd2);
   });
 
   test('sets the $parent on the new extension element', async () => {
@@ -180,18 +180,18 @@ describe('upsertExtensionElement', () => {
     const element = elementRegistry.get(result.elementId);
     const modeling = getService(diagram.modeler, 'modeling');
 
-    const inputOutput = moddle.create('camunda:InputOutput', { inputParameters: [] });
+    const ioMapping = moddle.create('zeebe:IoMapping', { inputParameters: [] });
     upsertExtensionElement(
       moddle,
       element.businessObject,
       modeling,
       element,
-      'camunda:InputOutput',
-      inputOutput
+      'zeebe:IoMapping',
+      ioMapping
     );
 
-    expect(inputOutput.$parent).toBeDefined();
-    expect(inputOutput.$parent.$type).toBe('bpmn:ExtensionElements');
+    expect(ioMapping.$parent).toBeDefined();
+    expect(ioMapping.$parent.$type).toBe('bpmn:ExtensionElements');
   });
 });
 

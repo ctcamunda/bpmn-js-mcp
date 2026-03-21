@@ -493,7 +493,7 @@ describe('role-mismatch-with-lane rule', () => {
     await handleSetProperties({
       diagramId,
       elementId: task,
-      properties: { 'camunda:assignee': 'finance_team' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'finance_team' } },
     });
 
     const res = parseResult(
@@ -545,7 +545,7 @@ describe('role-mismatch-with-lane rule', () => {
     await handleSetProperties({
       diagramId,
       elementId: task,
-      properties: { 'camunda:assignee': 'manager' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'manager' } },
     });
 
     const res = parseResult(
@@ -612,7 +612,7 @@ describe('TODO-helpdesk bpmnlint rules', () => {
 
       const issues = res.issues.filter((i: any) => i.rule === 'bpmn-mcp/lane-without-assignments');
       expect(issues.length).toBeGreaterThan(0);
-      expect(issues[0].message).toContain('no camunda:assignee');
+      expect(issues[0].message).toContain('no zeebe:AssignmentDefinition');
     });
 
     test('does not fire when user tasks have assignees', async () => {
@@ -640,7 +640,7 @@ describe('TODO-helpdesk bpmnlint rules', () => {
       await handleSetProperties({
         diagramId,
         elementId: t1,
-        properties: { 'camunda:assignee': 'support-agent' },
+        properties: { 'zeebe:assignmentDefinition': { assignee: 'support-agent' } },
       });
 
       await handleAssignElementsToLane({

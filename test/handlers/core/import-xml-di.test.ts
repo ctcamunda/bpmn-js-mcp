@@ -11,10 +11,10 @@ const XML_WITH_DI = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="Start_1" name="Begin" />
     <bpmn:endEvent id="End_1" name="Finish" />
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="End_1" />
@@ -39,10 +39,10 @@ const XML_WITH_DI = `<?xml version="1.0" encoding="UTF-8"?>
 const XML_WITHOUT_DI = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="Start_1" name="Begin" />
     <bpmn:endEvent id="End_1" name="Finish" />
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="End_1" />
@@ -58,10 +58,10 @@ const XML_WITH_ZERO_WIDTH_DI = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
     <bpmn:startEvent id="Start_1" name="Begin" />
     <bpmn:endEvent id="End_1" name="Finish" />
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="End_1" />

@@ -54,7 +54,10 @@ function buildStructureRecommendation(
     if (userTasks.length >= 3) {
       const assignees = new Set<string>();
       for (const t of userTasks) {
-        const a = t.businessObject?.$attrs?.['camunda:assignee'] ?? t.businessObject?.assignee;
+        const bo = t.businessObject;
+        const extVals = bo?.extensionElements?.values || [];
+        const assignment = extVals.find((e: any) => e.$type === 'zeebe:AssignmentDefinition');
+        const a = assignment?.assignee;
         if (a) assignees.add(String(a));
       }
       if (assignees.size >= 2) {
@@ -67,7 +70,7 @@ function buildStructureRecommendation(
       if (assignees.size === 0) {
         return (
           `Found ${userTasks.length} user/manual tasks without lanes. ` +
-          'Consider adding camunda:assignee to tasks and organizing into lanes, ' +
+          'Consider adding zeebe:AssignmentDefinition to tasks and organizing into lanes, ' +
           'or use analyze_bpmn_lanes (mode: suggest) for a type-based lane suggestion.'
         );
       }

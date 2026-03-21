@@ -81,7 +81,7 @@ const PROMPTS: PromptDefinition[] = [
     name: 'executable',
     title: 'Executable BPMN process (no pool)',
     description:
-      'Model an executable Operaton / Camunda 7 process as a flat process without ' +
+      'Model an executable Camunda 8 process as a flat process without ' +
       'a participant pool. Suitable for simple deployable workflows.',
     arguments: [],
     getMessages: () => [
@@ -91,7 +91,7 @@ const PROMPTS: PromptDefinition[] = [
           type: 'text',
           text:
             `You are now operating in **executable BPMN process mode (no pool)** ` +
-            `for Operaton / Camunda 7. When the user describes a workflow to model, ` +
+            `for Camunda 8 (Zeebe). When the user describes a workflow to model, ` +
             `follow these rules and build the diagram accordingly.\n\n` +
             `**Structure rules:**\n` +
             `- Do NOT create any participant pools — model a flat process.\n` +
@@ -100,12 +100,14 @@ const PROMPTS: PromptDefinition[] = [
             `- Use \`create_bpmn_diagram\` to start, then \`add_bpmn_element\` / ` +
             `\`add_bpmn_element_chain\` / \`connect_bpmn_elements\` to build the flow.\n\n` +
             `**Task configuration (make it deployable):**\n` +
-            `- UserTasks: set \`camunda:assignee\` or \`camunda:candidateGroups\`. ` +
-            `Add form fields with \`set_bpmn_form_data\` or set \`camunda:formRef\`.\n` +
-            `- ServiceTasks: set \`camunda:type\` to "external" and \`camunda:topic\` ` +
-            `for external task workers. Note: output mappings on external tasks are set ` +
-            `by the worker, not via static expressions in the diagram.\n` +
-            `- BusinessRuleTasks: set \`camunda:decisionRef\` to a DMN decision table ID.\n` +
+            `- UserTasks: set \`zeebe:assignee\` or \`zeebe:candidateGroups\` via ` +
+            `\`set_bpmn_element_properties\`. ` +
+            `Add forms with \`set_bpmn_form_data\` (formId for deployed forms, or embedded JSON).\n` +
+            `- ServiceTasks: set \`zeebe:type\` (job type for Zeebe workers) via ` +
+            `\`set_bpmn_element_properties\`. Use \`set_bpmn_input_output_mapping\` ` +
+            `for FEEL-based input/output mappings.\n` +
+            `- BusinessRuleTasks: set \`zeebe:decisionId\` and \`zeebe:resultVariable\` ` +
+            `via \`set_bpmn_element_properties\` for DMN decision tables.\n` +
             `- Gateways: always set condition expressions on outgoing flows and mark ` +
             `one flow as the default with \`isDefault: true\`. The default flow must NOT ` +
             `have a conditionExpression — it is the engine fallback. When using ` +
@@ -122,7 +124,7 @@ const PROMPTS: PromptDefinition[] = [
             `**Workflow (when the user gives you a process to model):**\n` +
             `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
             `2. Build the flow using \`batch_bpmn_operations\` to add elements and connections together\n` +
-            `3. Configure tasks (camunda:assignee, camunda:topic, etc.)\n` +
+            `3. Configure tasks (zeebe:assignee, zeebe:type, etc.)\n` +
             `4. \`layout_bpmn_diagram\` to arrange elements — non-orthogonal (Z-shaped) flows are ` +
             `automatically corrected; re-run layout if \`qualityMetrics.orthogonalFlowPercent\` ` +
             `is still below 90%. If the response lists \`nonOrthogonalFlowIds\`, call ` +
@@ -144,7 +146,7 @@ const PROMPTS: PromptDefinition[] = [
     name: 'executable-pool',
     title: 'Executable BPMN process with pool',
     description:
-      'Model an executable Operaton / Camunda 7 process wrapped in a participant ' +
+      'Model an executable Camunda 8 process wrapped in a participant ' +
       'pool, optionally with swim lanes for role separation and collapsed partner ' +
       'pools for external system documentation.',
     arguments: [],
@@ -155,7 +157,7 @@ const PROMPTS: PromptDefinition[] = [
           type: 'text',
           text:
             `You are now operating in **executable BPMN process mode with a participant pool** ` +
-            `for Operaton / Camunda 7. When the user describes a workflow to model, ` +
+            `for Camunda 8 (Zeebe). When the user describes a workflow to model, ` +
             `follow these rules and build the diagram accordingly.\n\n` +
             `**Structure rules:**\n` +
             `- Create ONE expanded participant pool for the executable process using ` +
@@ -168,12 +170,12 @@ const PROMPTS: PromptDefinition[] = [
             `\`create_bpmn_participant\` with \`participants\` array where partner entries ` +
             `have \`collapsed: true\`. Connect via \`connect_bpmn_elements\` (auto-creates ` +
             `message flows across pools).\n` +
-            `- **Only ONE pool is executable** in Camunda 7 — partner pools are for ` +
+            `- **Only ONE pool is executable** per deployment — partner pools are for ` + +
             `documentation only.\n\n` +
             `**Task configuration (make it deployable):**\n` +
-            `- UserTasks: set \`camunda:assignee\` or \`camunda:candidateGroups\`. ` +
+            `- UserTasks: set \`zeebe:assignee\` or \`zeebe:candidateGroups\`. ` +
             `Match the lane role (e.g. lane "Manager" → candidateGroups: "managers").\n` +
-            `- ServiceTasks: set \`camunda:type\` to "external" and \`camunda:topic\`.\n` +
+            `- ServiceTasks: set \`zeebe:type\` (job type for Zeebe workers).\n` +
             `- Gateways: always set condition expressions and a default flow. ` +
             `The default flow must NOT have a conditionExpression.\n\n` +
             `**Retry / loop-back flows (CRITICAL):**\n` +
@@ -233,7 +235,7 @@ const PROMPTS: PromptDefinition[] = [
             `**Modeling guidelines (documentation focus):**\n` +
             `- Use descriptive names: verb-object for tasks ("Send Invoice"), ` +
             `questions for gateways ("Payment received?").\n` +
-            `- Camunda-specific properties (assignee, topic, forms) are optional — ` +
+            `- Zeebe-specific properties (assignee, job type, forms) are optional — ` +
             `this is for human-readable documentation.\n` +
             `- Use \`manage_bpmn_root_elements\` to define shared bpmn:Message elements ` +
             `for cross-pool communication.\n` +

@@ -3,6 +3,7 @@ import {
   handleExportBpmn,
   handleImportXml,
   handleValidate as handleLintDiagram,
+  handleSetProperties,
 } from '../../../src/handlers';
 import { createDiagram, addElement, parseResult, clearDiagrams, connect } from '../../helpers';
 
@@ -74,6 +75,13 @@ describe('integration: full round-trip', () => {
     await connect(diagramId, approvedTask, joinGateway);
     await connect(diagramId, rejectedTask, joinGateway);
     await connect(diagramId, joinGateway, end);
+
+    // Set zeebe:taskDefinition on ServiceTask (required by Zeebe)
+    await handleSetProperties({
+      diagramId,
+      elementId: approvedTask,
+      properties: { 'zeebe:taskDefinition': { type: 'process-payment' } },
+    });
 
     // ── Step 2: Export as XML ──────────────────────────────────────────
     const exportRes = await handleExportBpmn({

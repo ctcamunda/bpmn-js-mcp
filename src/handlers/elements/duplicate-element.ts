@@ -32,14 +32,13 @@ const DUPLICATE_OFFSET = { x: 50, y: 50 };
 /** Types that cannot be duplicated via this tool. */
 const NON_DUPLICATABLE = new Set(['bpmn:Process', 'bpmn:Collaboration', 'bpmn:Participant']);
 
-/** Copy name and camunda:* extension attributes from an original business object. */
+/** Copy name and zeebe extension elements from an original business object. */
 function buildCopyProperties(bo: any, copyName: string): Record<string, any> {
   const props: Record<string, any> = {};
   if (copyName) props.name = copyName;
-  if (bo?.$attrs) {
-    for (const [key, value] of Object.entries(bo.$attrs)) {
-      if (key.startsWith('camunda:')) props[key] = value;
-    }
+  // Copy extensionElements (zeebe:TaskDefinition, zeebe:AssignmentDefinition, etc.)
+  if (bo?.extensionElements) {
+    props.extensionElements = bo.extensionElements;
   }
   return props;
 }

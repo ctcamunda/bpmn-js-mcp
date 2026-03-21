@@ -78,7 +78,7 @@ describe('redistribute_bpmn_elements_across_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1.elementId,
-      properties: { 'camunda:candidateGroups': 'support' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'support' } },
     });
 
     const task2 = parseResult(
@@ -92,7 +92,7 @@ describe('redistribute_bpmn_elements_across_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task2.elementId,
-      properties: { 'camunda:candidateGroups': 'engineering' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'engineering' } },
     });
 
     // Assign both to first lane (overcrowded)
@@ -132,7 +132,7 @@ describe('redistribute_bpmn_elements_across_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1.elementId,
-      properties: { 'camunda:candidateGroups': 'support' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'support' } },
     });
 
     const task2 = parseResult(
@@ -146,7 +146,7 @@ describe('redistribute_bpmn_elements_across_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task2.elementId,
-      properties: { 'camunda:candidateGroups': 'management' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'management' } },
     });
 
     // Assign both to the Engineering lane (wrong lane)
@@ -274,7 +274,7 @@ describe('redistribute_bpmn_elements_across_lanes', () => {
     await handleSetProperties({
       diagramId,
       elementId: task.elementId,
-      properties: { 'camunda:candidateGroups': 'support' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: 'support' } },
     });
 
     // Assign to the correct lane from the start

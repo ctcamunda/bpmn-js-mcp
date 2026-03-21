@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import {
   handleValidate as handleLintDiagram,
-  handleSetFormData,
+  handleSetInputOutput,
   handleSetProperties,
 } from '../../../src/handlers';
 import {
@@ -53,7 +53,7 @@ describe('undefined-variable rule', () => {
     expect(issues[0].message).toContain('approved');
   });
 
-  test('does not warn when variable is defined by a form field', async () => {
+  test('does not warn when variable is defined by output mapping', async () => {
     const diagramId = await createDiagram('Defined Var Test');
     const start = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start' });
     const formTask = await addElement(diagramId, 'bpmn:UserTask', { name: 'Fill Form' });
@@ -63,15 +63,15 @@ describe('undefined-variable rule', () => {
 
     await connect(diagramId, start, formTask);
     await connect(diagramId, formTask, gw);
-    await connect(diagramId, gw, taskA, { conditionExpression: '${approved == true}' });
+    await connect(diagramId, gw, taskA, { conditionExpression: '=approved = true' });
     await connect(diagramId, gw, end);
     await connect(diagramId, taskA, end);
 
-    // Define the 'approved' variable via form field
-    await handleSetFormData({
+    // Define the 'approved' variable via output mapping
+    await handleSetInputOutput({
       diagramId,
       elementId: formTask,
-      fields: [{ id: 'approved', label: 'Approved?', type: 'boolean' }],
+      outputParameters: [{ source: '=result', target: 'approved' }],
     });
 
     const res = parseResult(
@@ -84,24 +84,23 @@ describe('undefined-variable rule', () => {
     );
 
     const issues = res.issues.filter((i: any) => i.rule === 'bpmn-mcp/undefined-variable');
-    // 'approved' is defined by form field, so should not be reported
+    // 'approved' is defined by output mapping, so should not be reported
     const approvedIssues = issues.filter((i: any) => i.message.includes('approved'));
     expect(approvedIssues.length).toBe(0);
   });
 
-  test('does not warn for JUEL built-in variables', async () => {
+  test('does not warn for FEEL built-in functions', async () => {
     const diagramId = await createDiagram('Builtin Var Test');
     const { task } = await createSimpleProcess(diagramId);
 
-    // Set a condition that uses execution (built-in)
-    // We need to add a gateway with a condition that uses 'execution'
+    // Set a condition that uses a FEEL expression with built-in functions
     const gw = await addElement(diagramId, 'bpmn:ExclusiveGateway', { name: 'Check?' });
     const taskB = await addElement(diagramId, 'bpmn:UserTask', { name: 'Alt Path' });
     const end2 = await addElement(diagramId, 'bpmn:EndEvent', { name: 'End 2' });
 
     await connect(diagramId, task, gw);
     await connect(diagramId, gw, taskB, {
-      conditionExpression: '${execution.getVariable("test") != null}',
+      conditionExpression: '=now() != null',
     });
     await connect(diagramId, gw, end2);
     await connect(diagramId, taskB, end2);
@@ -116,9 +115,9 @@ describe('undefined-variable rule', () => {
     );
 
     const issues = res.issues.filter((i: any) => i.rule === 'bpmn-mcp/undefined-variable');
-    // 'execution' is a built-in, should not be reported
-    const executionIssues = issues.filter((i: any) => i.message.includes('"execution"'));
-    expect(executionIssues.length).toBe(0);
+    // 'now' is a FEEL built-in, should not be reported
+    const nowIssues = issues.filter((i: any) => i.message.includes('"now"'));
+    expect(nowIssues.length).toBe(0);
   });
 
   test('does not warn when variable is defined by script result variable', async () => {
@@ -135,11 +134,11 @@ describe('undefined-variable rule', () => {
     await connect(diagramId, gw, end);
     await connect(diagramId, taskA, end);
 
-    // Define 'total' via resultVariable
+    // Define 'total' via zeebe:Script resultVariable
     await handleSetProperties({
       diagramId,
       elementId: script,
-      properties: { 'camunda:resultVariable': 'total' },
+      properties: { 'zeebe:script': { resultVariable: 'total' } },
     });
 
     const res = parseResult(

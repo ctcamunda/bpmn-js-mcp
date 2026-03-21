@@ -65,16 +65,14 @@ describe('moddle-utils', () => {
       const element = registry.get(taskId);
       const bo = element.businessObject;
 
-      // Create a FormData element
-      const formData = moddle.create('camunda:FormData', {
-        fields: [moddle.create('camunda:FormField', { id: 'name', label: 'Name', type: 'string' })],
-      });
+      // Create a FormDefinition element
+      const formDef = moddle.create('zeebe:FormDefinition', { formId: 'testForm' });
 
-      upsertExtensionElement(moddle, bo, modeling, element, 'camunda:FormData', formData);
+      upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:FormDefinition', formDef);
 
       // Verify extension element was added
       const extensions = bo.extensionElements?.values || [];
-      const found = extensions.find((v: any) => v.$type === 'camunda:FormData');
+      const found = extensions.find((v: any) => v.$type === 'zeebe:FormDefinition');
       expect(found).toBeDefined();
     });
 
@@ -88,27 +86,19 @@ describe('moddle-utils', () => {
       const element = registry.get(taskId);
       const bo = element.businessObject;
 
-      // Add first FormData
-      const formData1 = moddle.create('camunda:FormData', {
-        fields: [
-          moddle.create('camunda:FormField', { id: 'first', label: 'First', type: 'string' }),
-        ],
-      });
-      upsertExtensionElement(moddle, bo, modeling, element, 'camunda:FormData', formData1);
+      // Add first FormDefinition
+      const formDef1 = moddle.create('zeebe:FormDefinition', { formId: 'first' });
+      upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:FormDefinition', formDef1);
 
-      // Add second FormData (should replace first)
-      const formData2 = moddle.create('camunda:FormData', {
-        fields: [
-          moddle.create('camunda:FormField', { id: 'second', label: 'Second', type: 'string' }),
-        ],
-      });
-      upsertExtensionElement(moddle, bo, modeling, element, 'camunda:FormData', formData2);
+      // Add second FormDefinition (should replace first)
+      const formDef2 = moddle.create('zeebe:FormDefinition', { formId: 'second' });
+      upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:FormDefinition', formDef2);
 
-      // Should only have one FormData
+      // Should only have one FormDefinition
       const extensions = bo.extensionElements?.values || [];
-      const formDatas = extensions.filter((v: any) => v.$type === 'camunda:FormData');
-      expect(formDatas).toHaveLength(1);
-      expect(formDatas[0].fields[0].id).toBe('second');
+      const formDefs = extensions.filter((v: any) => v.$type === 'zeebe:FormDefinition');
+      expect(formDefs).toHaveLength(1);
+      expect(formDefs[0].formId).toBe('second');
     });
   });
 });

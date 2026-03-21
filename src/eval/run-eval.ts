@@ -54,7 +54,7 @@ export async function runEval(config: EvalConfig): Promise<EvalReport> {
     const listJson = parseToolJson<any>(await handleListElements({ diagramId }));
     const listed = toListedElements(listJson);
 
-    // Run lint to get Camunda 7 executability metrics
+    // Run lint to get Camunda 8 executability metrics
     const diagram = getDiagram(diagramId);
     let lintErrors = 0;
     let lintWarnings = 0;

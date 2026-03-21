@@ -73,8 +73,8 @@ describe('diagram-manager', () => {
   });
 
   describe('INITIAL_XML', () => {
-    test('contains the camunda namespace', () => {
-      expect(INITIAL_XML).toContain('xmlns:camunda');
+    test('contains the zeebe namespace', () => {
+      expect(INITIAL_XML).toContain('xmlns:zeebe');
     });
 
     test('is valid-ish BPMN (contains definitions)', () => {

@@ -2,7 +2,7 @@
  * Handler for validate_bpmn_diagram tool.
  *
  * Fully delegates to bpmnlint for all checks — standard BPMN rules,
- * Camunda 7 (Operaton) compat checks via bpmnlint-plugin-camunda-compat,
+ * Camunda 8 (Zeebe) compat checks via bpmnlint-plugin-camunda-compat,
  * and custom MCP rules via bpmnlint-plugin-bpmn-mcp (registered through
  * the McpPluginResolver in src/linter.ts).
  *
@@ -69,11 +69,6 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
     tool: 'add_bpmn_element',
     args: { elementType: 'bpmn:EndEvent' },
   },
-  'bpmn-mcp/camunda-topic-without-external-type': {
-    tool: 'set_bpmn_element_properties',
-    args: { properties: { 'camunda:type': 'external' } },
-    requiresElementId: true,
-  },
   'no-disconnected': {
     tool: 'connect_bpmn_elements',
     args: { sourceElementId: '<source>' },
@@ -98,10 +93,6 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
     tool: 'connect_bpmn_elements',
     args: { targetElementId: '<target>' },
     requiresElementId: true,
-  },
-  'camunda-compat/history-time-to-live': {
-    tool: 'set_bpmn_element_properties',
-    args: { properties: { 'camunda:historyTimeToLive': '180' } },
   },
   'single-blank-start-event': {
     tool: 'delete_bpmn_element',
@@ -129,7 +120,7 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
   },
   'bpmn-mcp/service-task-missing-implementation': {
     tool: 'set_bpmn_element_properties',
-    args: { properties: { 'camunda:type': 'external', 'camunda:topic': '<topic-name>' } },
+    args: { properties: { 'zeebe:type': '<job-type>' } },
     requiresElementId: true,
   },
   'bpmn-mcp/timer-missing-definition': {
@@ -162,7 +153,7 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
   },
   'bpmn-mcp/user-task-missing-assignee': {
     tool: 'set_bpmn_element_properties',
-    args: { properties: { 'camunda:candidateGroups': '<group-name>' } },
+    args: { properties: { 'zeebe:candidateGroups': '<group-name>' } },
     requiresElementId: true,
   },
   'bpmn-mcp/implicit-merge': {
@@ -203,7 +194,7 @@ const FIX_TOOL_CALLS: Record<string, FixTemplate> = {
   },
   'bpmn-mcp/role-mismatch-with-lane': {
     tool: 'set_bpmn_element_properties',
-    args: { properties: { 'camunda:candidateGroups': '<lane-matching-group>' } },
+    args: { properties: { 'zeebe:candidateGroups': '<lane-matching-group>' } },
     requiresElementId: true,
   },
   'bpmn-mcp/layout-needs-alignment': {

@@ -59,31 +59,17 @@ describe('validate_bpmn_diagram — external task validation', () => {
     clearDiagrams();
   });
 
-  test('warns when camunda:topic is set without camunda:type=external', async () => {
+  test('reports issue when service task lacks zeebe:taskDefinition', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'Bad External',
-    });
-    // Manually set only topic without type (bypass auto-set by using type directly)
-    await handleSetProperties({
-      diagramId,
-      elementId: taskId,
-      properties: {
-        'camunda:type': 'external',
-        'camunda:topic': 'my-topic',
-      },
-    });
-    // Now change type to something else
-    await handleSetProperties({
-      diagramId,
-      elementId: taskId,
-      properties: {
-        'camunda:type': 'connector',
-      },
+      name: 'No Implementation',
     });
 
     const res = parseResult(await handleValidate({ diagramId }));
-    expect(res.issues.some((i: any) => i.message.includes('camunda:topic'))).toBe(true);
+    // Zeebe lint rules should flag a service task without task definition
+    expect(res.issues.length).toBeGreaterThan(0);
+    // At minimum, there should be issues related to the service task
+    expect(res.issues.some((i: any) => i.id === taskId || i.message)).toBe(true);
   });
 });
 

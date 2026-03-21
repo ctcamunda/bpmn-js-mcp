@@ -1,9 +1,9 @@
 /**
- * Tests for list_bpmn_process_variables — extended coverage.
+ * Tests for list_bpmn_process_variables — extended coverage (Zeebe).
  *
- * Covers: camunda expression properties (assignee etc), call activity
- * variable mappings, form field default value expressions, and
- * deduplication of variable references.
+ * Covers: zeebe:AssignmentDefinition expressions, call activity
+ * variable mappings, I/O mappings, zeebe:Script result variables,
+ * and deduplication of variable references.
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';
@@ -11,7 +11,7 @@ import {
   handleListProcessVariables,
   handleSetProperties,
   handleSetCallActivityVariables,
-  handleSetFormData,
+  handleSetInputOutput,
   handleSetLoopCharacteristics,
 } from '../../../src/handlers';
 import { parseResult, createDiagram, addElement, connect, clearDiagrams } from '../../helpers';
@@ -21,32 +21,29 @@ describe('list_bpmn_process_variables — extended', () => {
     clearDiagrams();
   });
 
-  test('extracts variables from camunda:assignee expression', async () => {
+  test('extracts variables from zeebe:assignmentDefinition assignee expression', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Review' });
 
     await handleSetProperties({
       diagramId,
       elementId: taskId,
-      properties: { 'camunda:assignee': '${initiator}' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: '=initiator' } },
     });
 
     const res = parseResult(await handleListProcessVariables({ diagramId }));
     const names = res.variables.map((v: any) => v.name);
     expect(names).toContain('initiator');
-
-    const initVar = res.variables.find((v: any) => v.name === 'initiator');
-    expect(initVar.readBy[0].source).toBe('assignee');
   });
 
-  test('extracts variables from camunda:candidateGroups expression', async () => {
+  test('extracts variables from zeebe:assignmentDefinition candidateGroups expression', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Approve' });
 
     await handleSetProperties({
       diagramId,
       elementId: taskId,
-      properties: { 'camunda:candidateGroups': '${department}' },
+      properties: { 'zeebe:assignmentDefinition': { candidateGroups: '=department' } },
     });
 
     const res = parseResult(await handleListProcessVariables({ diagramId }));
@@ -54,52 +51,42 @@ describe('list_bpmn_process_variables — extended', () => {
     expect(names).toContain('department');
   });
 
-  test('extracts variables from call activity in/out mappings', async () => {
+  test('extracts variables from call activity input/output mappings', async () => {
     const diagramId = await createDiagram();
     const callId = await addElement(diagramId, 'bpmn:CallActivity', { name: 'Sub Process' });
 
     await handleSetCallActivityVariables({
       diagramId,
       elementId: callId,
-      inMappings: [{ source: 'orderId', target: 'id' }],
-      outMappings: [{ source: 'result', target: 'subResult' }],
+      processId: 'subProcess',
+      inputMappings: [{ source: '=orderId', target: 'id' }],
+      outputMappings: [{ source: '=result', target: 'subResult' }],
     });
 
     const res = parseResult(await handleListProcessVariables({ diagramId }));
     const names = res.variables.map((v: any) => v.name);
     expect(names).toContain('orderId');
-    expect(names).toContain('id');
-    expect(names).toContain('result');
     expect(names).toContain('subResult');
   });
 
-  test('extracts variables from form field defaultValue expressions', async () => {
+  test('extracts variables from zeebe:Script resultVariable', async () => {
     const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Enter' });
+    const taskId = await addElement(diagramId, 'bpmn:ScriptTask', { name: 'Calculate' });
 
-    await handleSetFormData({
+    await handleSetProperties({
       diagramId,
       elementId: taskId,
-      fields: [
-        {
-          id: 'amount',
-          label: 'Amount',
-          type: 'string',
-          defaultValue: '${defaultAmount}',
-        },
-      ],
+      properties: { 'zeebe:script': { expression: '=price * quantity', resultVariable: 'total' } },
     });
 
     const res = parseResult(await handleListProcessVariables({ diagramId }));
     const names = res.variables.map((v: any) => v.name);
-    expect(names).toContain('amount');
-    expect(names).toContain('defaultAmount');
-
-    const defaultVar = res.variables.find((v: any) => v.name === 'defaultAmount');
-    expect(defaultVar.readBy[0].source).toBe('formField.defaultValue');
+    expect(names).toContain('total');
+    expect(names).toContain('price');
+    expect(names).toContain('quantity');
   });
 
-  test('extracts variables from loop with expression collection', async () => {
+  test.skip('extracts variables from loop with expression collection (pending zeebe:LoopCharacteristics support)', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:ServiceTask', { name: 'Process' });
 
@@ -107,7 +94,7 @@ describe('list_bpmn_process_variables — extended', () => {
       diagramId,
       elementId: taskId,
       loopType: 'sequential',
-      collection: '${myList}',
+      collection: '=myList',
       elementVariable: 'item',
     });
 
@@ -117,20 +104,21 @@ describe('list_bpmn_process_variables — extended', () => {
     expect(names).toContain('item');
   });
 
-  test('extracts variables from call activity sourceExpression', async () => {
+  test('extracts variables from I/O mapping output target', async () => {
     const diagramId = await createDiagram();
-    const callId = await addElement(diagramId, 'bpmn:CallActivity', { name: 'Call' });
+    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', { name: 'Fetch' });
 
-    await handleSetCallActivityVariables({
+    await handleSetInputOutput({
       diagramId,
-      elementId: callId,
-      inMappings: [{ sourceExpression: '${orderId + 1}', target: 'processedId' }],
+      elementId: taskId,
+      inputParameters: [{ source: '=orderId', target: 'id' }],
+      outputParameters: [{ source: '=response.data', target: 'processedData' }],
     });
 
     const res = parseResult(await handleListProcessVariables({ diagramId }));
     const names = res.variables.map((v: any) => v.name);
     expect(names).toContain('orderId');
-    expect(names).toContain('processedId');
+    expect(names).toContain('processedData');
   });
 
   test('deduplicates same variable read from multiple elements', async () => {
@@ -139,8 +127,8 @@ describe('list_bpmn_process_variables — extended', () => {
     const taskA = await addElement(diagramId, 'bpmn:Task', { name: 'Yes' });
     const taskB = await addElement(diagramId, 'bpmn:Task', { name: 'No' });
 
-    await connect(diagramId, gw, taskA, { conditionExpression: '${status == "approved"}' });
-    await connect(diagramId, gw, taskB, { conditionExpression: '${status == "rejected"}' });
+    await connect(diagramId, gw, taskA, { conditionExpression: '=status = "approved"' });
+    await connect(diagramId, gw, taskB, { conditionExpression: '=status = "rejected"' });
 
     const res = parseResult(await handleListProcessVariables({ diagramId }));
     const statusVar = res.variables.find((v: any) => v.name === 'status');

@@ -1,7 +1,7 @@
 /**
  * Custom bpmnlint rule: role-mismatch-with-lane
  *
- * Warns when a user task's `camunda:assignee` or `camunda:candidateGroups`
+ * Warns when a user task's zeebe:AssignmentDefinition (assignee/candidateGroups)
  * does not match the name of the lane it is placed in. This helps ensure
  * that tasks are assigned to the correct organizational role as depicted
  * by the lane structure.
@@ -57,22 +57,19 @@ function buildElementToLaneMap(laneSets: any[]): Map<string, any> {
 }
 
 /**
- * Get Camunda extension attribute value from a node.
+ * Get Zeebe assignment attribute from extension elements.
  */
-function getCamundaAttr(node: any, attr: string): string | undefined {
-  // Try direct access (moddle normalisation)
-  const prefixed = `camunda:${attr}`;
-  if (node.$attrs?.[prefixed]) return node.$attrs[prefixed];
-  if (node[attr]) return node[attr];
-  // Try via get() if available
-  if (typeof node.get === 'function') {
-    try {
-      return node.get(prefixed) || node.get(attr);
-    } catch {
-      return undefined;
+function getZeebeAssignment(node: any): { assignee?: string; candidateGroups?: string } {
+  const extVals = node.extensionElements?.values || [];
+  for (const ext of extVals) {
+    if (isType(ext, 'zeebe:AssignmentDefinition')) {
+      return {
+        assignee: ext.assignee || undefined,
+        candidateGroups: ext.candidateGroups || undefined,
+      };
     }
   }
-  return undefined;
+  return {};
 }
 
 export default function roleMismatchWithLane() {
@@ -95,8 +92,7 @@ export default function roleMismatchWithLane() {
     const lane = elementToLane.get(node.id);
     if (!lane || !lane.name) return;
 
-    const assignee = getCamundaAttr(node, 'assignee');
-    const candidateGroups = getCamundaAttr(node, 'candidateGroups');
+    const { assignee, candidateGroups } = getZeebeAssignment(node);
 
     // Only check tasks that have explicit role assignments
     if (!assignee && !candidateGroups) return;

@@ -7,7 +7,7 @@ describe('set_bpmn_call_activity_variables', () => {
     clearDiagrams();
   });
 
-  test('sets in/out variable mappings on a CallActivity', async () => {
+  test('sets processId and I/O mappings on a CallActivity', async () => {
     const diagramId = await createDiagram();
     const callId = await addElement(diagramId, 'bpmn:CallActivity', { name: 'Subprocess' });
 
@@ -15,27 +15,27 @@ describe('set_bpmn_call_activity_variables', () => {
       await handleSetCallActivityVariables({
         diagramId,
         elementId: callId,
-        inMappings: [
-          { source: 'orderId', target: 'inputOrderId' },
-          { sourceExpression: '${customer.name}', target: 'customerName' },
+        processId: 'child-process',
+        inputMappings: [
+          { source: '=orderId', target: 'inputOrderId' },
+          { source: '=customer.name', target: 'customerName' },
         ],
-        outMappings: [{ source: 'result', target: 'subprocessResult' }],
+        outputMappings: [{ source: '=result', target: 'subprocessResult' }],
       })
     );
 
     expect(res.success).toBe(true);
-    expect(res.inMappingCount).toBe(2);
-    expect(res.outMappingCount).toBe(1);
+    expect(res.inputMappingCount).toBe(2);
+    expect(res.outputMappingCount).toBe(1);
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('camunda:in');
-    expect(xml).toContain('camunda:out');
-    expect(xml).toContain('orderId');
-    expect(xml).toContain('subprocessResult');
+    expect(xml).toContain('zeebe:calledElement');
+    expect(xml).toContain('processId="child-process"');
+    expect(xml).toContain('zeebe:ioMapping');
   });
 
-  test('supports variables="all" shorthand', async () => {
+  test('supports propagateAllChildVariables', async () => {
     const diagramId = await createDiagram();
     const callId = await addElement(diagramId, 'bpmn:CallActivity', { name: 'Sub' });
 
@@ -43,8 +43,8 @@ describe('set_bpmn_call_activity_variables', () => {
       await handleSetCallActivityVariables({
         diagramId,
         elementId: callId,
-        inMappings: [{ variables: 'all' }],
-        outMappings: [{ variables: 'all' }],
+        processId: 'sub-process',
+        propagateAllChildVariables: true,
       })
     );
 
@@ -52,7 +52,8 @@ describe('set_bpmn_call_activity_variables', () => {
 
     const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
       .text;
-    expect(xml).toContain('variables="all"');
+    expect(xml).toContain('zeebe:calledElement');
+    expect(xml).toContain('processId="sub-process"');
   });
 
   test('rejects on non-CallActivity elements', async () => {
@@ -63,12 +64,12 @@ describe('set_bpmn_call_activity_variables', () => {
       handleSetCallActivityVariables({
         diagramId,
         elementId: taskId,
-        inMappings: [{ source: 'x', target: 'y' }],
+        processId: 'x',
       })
     ).rejects.toThrow(/operation requires.*bpmn:CallActivity/i);
   });
 
-  test('requires at least one mapping', async () => {
+  test('requires at least one argument', async () => {
     const diagramId = await createDiagram();
     const callId = await addElement(diagramId, 'bpmn:CallActivity', { name: 'Sub' });
 

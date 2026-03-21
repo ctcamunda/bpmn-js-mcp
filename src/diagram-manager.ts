@@ -6,7 +6,7 @@
 import { randomBytes } from 'node:crypto';
 import { type DiagramState } from './types';
 import { createHeadlessCanvas, getBpmnModeler } from './headless-canvas';
-import camundaModdle from 'camunda-bpmn-moddle/resources/camunda.json';
+import zeebeModdle from 'zeebe-bpmn-moddle/resources/zeebe.json';
 
 /** Default BPMN XML used when creating a brand-new diagram. */
 export const INITIAL_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -14,10 +14,10 @@ export const INITIAL_XML = `<?xml version="1.0" encoding="UTF-8"?>
                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                   xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                    id="Definitions_1"
                    targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_1" isExecutable="true" camunda:historyTimeToLive="P180D">
+  <bpmn:process id="Process_1" isExecutable="true">
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
@@ -111,7 +111,7 @@ export function clearDiagrams(): void {
 // ── Modeler helpers ────────────────────────────────────────────────────────
 
 /** Shared moddle-extensions option used by every modeler instance. */
-const moddleExtensions = { camunda: camundaModdle };
+const moddleExtensions = { zeebe: zeebeModdle };
 
 /** Create a fresh BpmnModeler initialised with the default blank diagram. */
 export async function createModeler(): Promise<any> {

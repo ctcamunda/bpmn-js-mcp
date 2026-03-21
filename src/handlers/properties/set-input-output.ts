@@ -1,10 +1,10 @@
 /**
  * Handler for set_input_output_mapping tool.
  *
- * Accepts `value` on input/output parameters for both static values and
- * expressions (e.g. `${myVar}`).  Does NOT support `source` or
- * `sourceExpression` — those belong to `camunda:In`/`camunda:Out` for call
- * activity variable mapping, not to `camunda:InputParameter`.
+ * Creates zeebe:IoMapping with zeebe:Input and zeebe:Output children
+ * as extension elements. Input mappings map process variables into the
+ * task scope; output mappings map task results back to process variables.
+ * Both use FEEL expressions for the source.
  */
 // @mutating
 
@@ -21,11 +21,8 @@ import {
 import { appendLintFeedback } from '../../linter';
 
 export interface IoParameterValue {
-  name: string;
-  value?: string;
-  list?: string[];
-  map?: Record<string, string>;
-  script?: { scriptFormat: string; value: string; resource?: string };
+  source: string;
+  target: string;
 }
 
 export interface SetInputOutputArgs {
@@ -33,54 +30,6 @@ export interface SetInputOutputArgs {
   elementId: string;
   inputParameters?: IoParameterValue[];
   outputParameters?: IoParameterValue[];
-}
-
-/** Build a camunda:InputParameter or camunda:OutputParameter with optional complex value. */
-function buildParameter(
-  moddle: any,
-  type: 'camunda:InputParameter' | 'camunda:OutputParameter',
-  p: IoParameterValue
-): any {
-  const attrs: Record<string, any> = { name: p.name };
-  if (p.value !== undefined) attrs.value = p.value;
-  const param = moddle.create(type, attrs);
-
-  // camunda:List value
-  if (p.list) {
-    const items = p.list.map((v) => moddle.create('camunda:Value', { value: v }));
-    const listEl = moddle.create('camunda:List', { items });
-    items.forEach((item: any) => (item.$parent = listEl));
-    listEl.$parent = param;
-    param.definition = listEl;
-  }
-
-  // camunda:Map value
-  if (p.map) {
-    const entries = Object.entries(p.map).map(([key, value]) =>
-      moddle.create('camunda:Entry', { key, value })
-    );
-    const mapEl = moddle.create('camunda:Map', { entries });
-    entries.forEach((entry: any) => (entry.$parent = mapEl));
-    mapEl.$parent = param;
-    param.definition = mapEl;
-  }
-
-  // camunda:Script value
-  if (p.script) {
-    const scriptAttrs: Record<string, any> = {
-      scriptFormat: p.script.scriptFormat,
-    };
-    if (p.script.resource) {
-      scriptAttrs.resource = p.script.resource;
-    } else {
-      scriptAttrs.value = p.script.value;
-    }
-    const scriptEl = moddle.create('camunda:Script', scriptAttrs);
-    scriptEl.$parent = param;
-    param.definition = scriptEl;
-  }
-
-  return param;
 }
 
 export async function handleSetInputOutput(args: SetInputOutputArgs): Promise<ToolResult> {
@@ -95,31 +44,31 @@ export async function handleSetInputOutput(args: SetInputOutputArgs): Promise<To
   const element = requireElement(elementRegistry, elementId);
   const bo = element.businessObject;
 
-  // Build camunda:InputParameter elements
-  const inputParams = inputParameters.map((p) =>
-    buildParameter(moddle, 'camunda:InputParameter', p)
+  // Build zeebe:Input elements
+  const inputs = inputParameters.map((p) =>
+    moddle.create('zeebe:Input', { source: p.source, target: p.target })
   );
 
-  // Build camunda:OutputParameter elements
-  const outputParams = outputParameters.map((p) =>
-    buildParameter(moddle, 'camunda:OutputParameter', p)
+  // Build zeebe:Output elements
+  const outputs = outputParameters.map((p) =>
+    moddle.create('zeebe:Output', { source: p.source, target: p.target })
   );
 
-  // Build camunda:InputOutput element
+  // Build zeebe:IoMapping element
   const ioAttrs: Record<string, any> = {};
-  if (inputParams.length > 0) ioAttrs.inputParameters = inputParams;
-  if (outputParams.length > 0) ioAttrs.outputParameters = outputParams;
-  const inputOutput = moddle.create('camunda:InputOutput', ioAttrs);
+  if (inputs.length > 0) ioAttrs.inputParameters = inputs;
+  if (outputs.length > 0) ioAttrs.outputParameters = outputs;
+  const ioMapping = moddle.create('zeebe:IoMapping', ioAttrs);
 
-  upsertExtensionElement(moddle, bo, modeling, element, 'camunda:InputOutput', inputOutput);
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:IoMapping', ioMapping);
 
   await syncXml(diagram);
 
   const result = jsonResult({
     success: true,
     elementId,
-    inputParameterCount: inputParams.length,
-    outputParameterCount: outputParams.length,
+    inputParameterCount: inputs.length,
+    outputParameterCount: outputs.length,
     message: `Set input/output mapping on ${elementId}`,
   });
   return appendLintFeedback(result, diagram);
@@ -128,7 +77,10 @@ export async function handleSetInputOutput(args: SetInputOutputArgs): Promise<To
 export const TOOL_DEFINITION = {
   name: 'set_bpmn_input_output_mapping',
   description:
-    "Set Camunda input/output parameter mappings on an element. Creates camunda:InputOutput extension elements with camunda:InputParameter and camunda:OutputParameter children. The 'value' field accepts both static values (e.g. '123') and expressions (e.g. '${myVar}', '${execution.getVariable('name')}'). Supports complex value types: 'list' (string array), 'map' (key-value object), and 'script' (inline or external script).",
+    'Set Zeebe input/output mappings on an element. Creates zeebe:IoMapping extension elements ' +
+    'with zeebe:Input and zeebe:Output children. Each mapping has a source (FEEL expression) ' +
+    'and a target (variable name). Input mappings map process variables into the local task scope; ' +
+    'output mappings map task results back to process variables.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -142,103 +94,52 @@ export const TOOL_DEFINITION = {
         items: {
           type: 'object',
           properties: {
-            name: { type: 'string', description: 'Parameter name' },
-            value: {
+            source: {
               type: 'string',
               description:
-                "Static value or expression. Examples: '123', '${myVar}', '${execution.getVariable('orderId')}'.",
+                'FEEL expression for the source value (e.g. "=orderId", "=customer.name", "=\"fixed-value\"")',
             },
-            list: {
-              type: 'array',
-              items: { type: 'string' },
-              description:
-                'List of values (creates camunda:List). Mutually exclusive with value/map/script.',
-            },
-            map: {
-              type: 'object',
-              additionalProperties: { type: 'string' },
-              description:
-                'Key-value map (creates camunda:Map). Mutually exclusive with value/list/script.',
-            },
-            script: {
-              type: 'object',
-              properties: {
-                scriptFormat: {
-                  type: 'string',
-                  description: "Script language (e.g. 'groovy', 'javascript')",
-                },
-                value: { type: 'string', description: 'Inline script body' },
-                resource: {
-                  type: 'string',
-                  description: 'External script resource path (alternative to inline value)',
-                },
-              },
-              required: ['scriptFormat'],
-              description:
-                'Script value (creates camunda:Script). Mutually exclusive with value/list/map.',
+            target: {
+              type: 'string',
+              description: 'Target variable name in the local task scope',
             },
           },
-          required: ['name'],
+          required: ['source', 'target'],
         },
-        description: 'Input parameters to set',
+        description: 'Input mappings (process scope → task scope)',
       },
       outputParameters: {
         type: 'array',
         items: {
           type: 'object',
           properties: {
-            name: { type: 'string', description: 'Parameter name' },
-            value: {
+            source: {
               type: 'string',
-              description: "Static value or expression. Examples: 'ok', '${result}'.",
-            },
-            list: {
-              type: 'array',
-              items: { type: 'string' },
               description:
-                'List of values (creates camunda:List). Mutually exclusive with value/map/script.',
+                'FEEL expression for the source value (e.g. "=result", "=response.status")',
             },
-            map: {
-              type: 'object',
-              additionalProperties: { type: 'string' },
-              description:
-                'Key-value map (creates camunda:Map). Mutually exclusive with value/list/script.',
-            },
-            script: {
-              type: 'object',
-              properties: {
-                scriptFormat: {
-                  type: 'string',
-                  description: "Script language (e.g. 'groovy', 'javascript')",
-                },
-                value: { type: 'string', description: 'Inline script body' },
-                resource: {
-                  type: 'string',
-                  description: 'External script resource path (alternative to inline value)',
-                },
-              },
-              required: ['scriptFormat'],
-              description:
-                'Script value (creates camunda:Script). Mutually exclusive with value/list/map.',
+            target: {
+              type: 'string',
+              description: 'Target variable name in the process scope',
             },
           },
-          required: ['name'],
+          required: ['source', 'target'],
         },
-        description: 'Output parameters to set',
+        description: 'Output mappings (task scope → process scope)',
       },
     },
     required: ['diagramId', 'elementId'],
     examples: [
       {
-        title: 'Map variables for an HTTP connector service task',
+        title: 'Map variables for a service task',
         value: {
           diagramId: '<diagram-id>',
           elementId: 'ServiceTask_FetchOrder',
           inputParameters: [
-            { name: 'url', value: 'https://api.example.com/orders/${orderId}' },
-            { name: 'method', value: 'GET' },
+            { source: '=orderId', target: 'fetchOrderId' },
+            { source: '="GET"', target: 'method' },
           ],
-          outputParameters: [{ name: 'orderData', value: '${response}' }],
+          outputParameters: [{ source: '=response', target: 'orderData' }],
         },
       },
     ],

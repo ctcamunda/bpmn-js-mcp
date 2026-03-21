@@ -2,8 +2,8 @@
  * Custom bpmnlint rule: gateway-missing-default
  *
  * Checks that exclusive/inclusive gateways with conditional outgoing flows
- * also have a default flow configured.  Without a default, the Camunda 7
- * (Operaton) engine throws an error at runtime if no condition matches.
+ * also have a default flow configured.  Without a default, the Zeebe
+ * engine throws an error at runtime if no condition matches.
  */
 
 import { isType } from '../utils';

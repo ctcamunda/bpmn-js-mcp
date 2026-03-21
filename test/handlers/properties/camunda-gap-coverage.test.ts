@@ -1,25 +1,17 @@
 /**
- * Tests for P0 camunda-bpmn-moddle gap coverage improvements:
+ * Tests for Zeebe extension element coverage:
  * - Listener serialization in get_bpmn_element_properties
- * - camunda:In/Out serialization in get_bpmn_element_properties
- * - camunda:FailedJobRetryTimeCycle support
- * - ConditionalEventDefinition camunda variables
- * - camunda:errorMessage on bpmn:Error
- * - ErrorCodeVariable/ErrorMessageVariable on ErrorEventDefinition
+ * - Call activity variable serialization in get_bpmn_element_properties
  * - Tool-discovery hints after add/replace
- * - Fix suggestions in appendLintFeedback
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';
 import {
   handleGetProperties,
-  handleSetProperties,
   handleSetCamundaListeners,
   handleSetCallActivityVariables,
-  handleSetEventDefinition,
   handleAddElement,
   handleReplaceElement,
-  handleExportBpmn,
 } from '../../../src/handlers';
 import { parseResult, createDiagram, addElement, clearDiagrams } from '../../helpers';
 
@@ -39,20 +31,19 @@ describe('get_bpmn_element_properties — listener serialization', () => {
       diagramId,
       elementId: taskId,
       executionListeners: [
-        { event: 'start', class: 'com.example.StartListener' },
-        { event: 'end', delegateExpression: '${endHandler}' },
+        { eventType: 'start', type: 'start-worker' },
+        { eventType: 'end', type: 'end-worker', retries: '3' },
       ],
     });
 
     const res = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const listeners = res.extensionElements.filter(
-      (e: any) => e.type === 'camunda:ExecutionListener'
+    const listenersExt = res.extensionElements.find(
+      (e: any) => e.type === 'zeebe:ExecutionListeners'
     );
-    expect(listeners).toHaveLength(2);
-    expect(listeners[0].event).toBe('start');
-    expect(listeners[0].class).toBe('com.example.StartListener');
-    expect(listeners[1].event).toBe('end');
-    expect(listeners[1].delegateExpression).toBe('${endHandler}');
+    expect(listenersExt).toBeDefined();
+    expect(listenersExt.listeners).toHaveLength(2);
+    expect(listenersExt.listeners[0].eventType).toBe('start');
+    expect(listenersExt.listeners[0].type).toBe('start-worker');
   });
 
   test('serializes task listener details', async () => {
@@ -65,48 +56,26 @@ describe('get_bpmn_element_properties — listener serialization', () => {
     await handleSetCamundaListeners({
       diagramId,
       elementId: taskId,
-      taskListeners: [{ event: 'create', expression: '${assignTask}' }],
+      taskListeners: [{ eventType: 'complete', type: 'complete-worker' }],
     });
 
     const res = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const listeners = res.extensionElements.filter((e: any) => e.type === 'camunda:TaskListener');
-    expect(listeners).toHaveLength(1);
-    expect(listeners[0].event).toBe('create');
-    expect(listeners[0].expression).toBe('${assignTask}');
-  });
-
-  test('serializes listener with inline script', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'Scripted',
-      x: 200,
-      y: 100,
-    });
-    await handleSetCamundaListeners({
-      diagramId,
-      elementId: taskId,
-      executionListeners: [
-        {
-          event: 'start',
-          script: { scriptFormat: 'groovy', value: 'println "hello"' },
-        },
-      ],
-    });
-
-    const res = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const listener = res.extensionElements.find((e: any) => e.type === 'camunda:ExecutionListener');
-    expect(listener.script).toBeDefined();
-    expect(listener.script.scriptFormat).toBe('groovy');
-    expect(listener.script.value).toBe('println "hello"');
+    const listenersExt = res.extensionElements.find(
+      (e: any) => e.type === 'zeebe:TaskListeners'
+    );
+    expect(listenersExt).toBeDefined();
+    expect(listenersExt.listeners).toHaveLength(1);
+    expect(listenersExt.listeners[0].eventType).toBe('complete');
+    expect(listenersExt.listeners[0].type).toBe('complete-worker');
   });
 });
 
-describe('get_bpmn_element_properties — camunda:In/Out serialization', () => {
+describe('get_bpmn_element_properties — call activity variable serialization', () => {
   beforeEach(() => {
     clearDiagrams();
   });
 
-  test('serializes call activity variable mappings', async () => {
+  test('serializes call activity calledElement and I/O mappings', async () => {
     const diagramId = await createDiagram();
     const callId = await addElement(diagramId, 'bpmn:CallActivity', {
       name: 'Call Sub',
@@ -116,192 +85,22 @@ describe('get_bpmn_element_properties — camunda:In/Out serialization', () => {
     await handleSetCallActivityVariables({
       diagramId,
       elementId: callId,
-      inMappings: [{ source: 'orderId', target: 'id' }],
-      outMappings: [{ source: 'result', target: 'subResult' }],
+      processId: 'child-process',
+      inputMappings: [{ source: '=orderId', target: 'id' }],
+      outputMappings: [{ source: '=result', target: 'subResult' }],
     });
 
     const res = parseResult(await handleGetProperties({ diagramId, elementId: callId }));
-    const inExt = res.extensionElements.find((e: any) => e.type === 'camunda:In');
-    const outExt = res.extensionElements.find((e: any) => e.type === 'camunda:Out');
-    expect(inExt).toBeDefined();
-    expect(inExt.source).toBe('orderId');
-    expect(inExt.target).toBe('id');
-    expect(outExt).toBeDefined();
-    expect(outExt.source).toBe('result');
-    expect(outExt.target).toBe('subResult');
-  });
-});
-
-describe('camunda:FailedJobRetryTimeCycle support', () => {
-  beforeEach(() => {
-    clearDiagrams();
-  });
-
-  test('sets retry time cycle on a service task', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'Retry Task',
-      x: 200,
-      y: 100,
-    });
-
-    await handleSetProperties({
-      diagramId,
-      elementId: taskId,
-      properties: {
-        'camunda:retryTimeCycle': 'R3/PT10M',
-      },
-    });
-
-    // Verify via XML export
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('camunda:failedJobRetryTimeCycle');
-    expect(xml).toContain('R3/PT10M');
-
-    // Verify via get_properties
-    const res = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const retryExt = res.extensionElements?.find(
-      (e: any) => e.type === 'camunda:FailedJobRetryTimeCycle'
+    const calledElement = res.extensionElements.find(
+      (e: any) => e.type === 'zeebe:CalledElement'
     );
-    expect(retryExt).toBeDefined();
-    expect(retryExt.body).toBe('R3/PT10M');
-  });
+    expect(calledElement).toBeDefined();
+    expect(calledElement.processId).toBe('child-process');
 
-  test('clears retry time cycle when set to empty', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'Retry Task',
-      x: 200,
-      y: 100,
-    });
-
-    // Set then clear
-    await handleSetProperties({
-      diagramId,
-      elementId: taskId,
-      properties: { 'camunda:retryTimeCycle': 'R3/PT10M' },
-    });
-    await handleSetProperties({
-      diagramId,
-      elementId: taskId,
-      properties: { 'camunda:retryTimeCycle': '' },
-    });
-
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).not.toContain('failedJobRetryTimeCycle');
-  });
-});
-
-describe('ConditionalEventDefinition camunda variables', () => {
-  beforeEach(() => {
-    clearDiagrams();
-  });
-
-  test('sets variableName and variableEvents on conditional event', async () => {
-    const diagramId = await createDiagram();
-    const catchId = await addElement(diagramId, 'bpmn:IntermediateCatchEvent', {
-      x: 200,
-      y: 200,
-    });
-
-    await handleSetEventDefinition({
-      diagramId,
-      elementId: catchId,
-      eventDefinitionType: 'bpmn:ConditionalEventDefinition',
-      properties: {
-        condition: '${status == "active"}',
-        variableName: 'status',
-        variableEvents: 'create, update',
-      },
-    });
-
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('conditionalEventDefinition');
-    expect(xml).toContain('camunda:variableName="status"');
-    expect(xml).toContain('camunda:variableEvents="create, update"');
-
-    // Also verify via get_properties
-    const res = parseResult(await handleGetProperties({ diagramId, elementId: catchId }));
-    const eventDef = res.eventDefinitions?.[0];
-    expect(eventDef['camunda:variableName']).toBe('status');
-    expect(eventDef['camunda:variableEvents']).toBe('create, update');
-  });
-});
-
-describe('ErrorEventDefinition camunda variables', () => {
-  beforeEach(() => {
-    clearDiagrams();
-  });
-
-  test('sets errorCodeVariable and errorMessageVariable', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'API Call',
-      x: 200,
-      y: 200,
-    });
-    const boundaryId = await addElement(diagramId, 'bpmn:BoundaryEvent', {
-      hostElementId: taskId,
-    });
-
-    await handleSetEventDefinition({
-      diagramId,
-      elementId: boundaryId,
-      eventDefinitionType: 'bpmn:ErrorEventDefinition',
-      errorRef: { id: 'Error_1', name: 'ApiError', errorCode: 'ERR_API' },
-      properties: {
-        errorCodeVariable: 'errCode',
-        errorMessageVariable: 'errMsg',
-      },
-    });
-
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('camunda:errorCodeVariable="errCode"');
-    expect(xml).toContain('camunda:errorMessageVariable="errMsg"');
-
-    // Verify via get_properties
-    const res = parseResult(await handleGetProperties({ diagramId, elementId: boundaryId }));
-    const eventDef = res.eventDefinitions?.[0];
-    expect(eventDef['camunda:errorCodeVariable']).toBe('errCode');
-    expect(eventDef['camunda:errorMessageVariable']).toBe('errMsg');
-  });
-});
-
-describe('camunda:errorMessage on bpmn:Error', () => {
-  beforeEach(() => {
-    clearDiagrams();
-  });
-
-  test('passes errorMessage through to bpmn:Error root element', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', {
-      name: 'Task',
-      x: 200,
-      y: 200,
-    });
-    const boundaryId = await addElement(diagramId, 'bpmn:BoundaryEvent', {
-      hostElementId: taskId,
-    });
-
-    await handleSetEventDefinition({
-      diagramId,
-      elementId: boundaryId,
-      eventDefinitionType: 'bpmn:ErrorEventDefinition',
-      errorRef: {
-        id: 'Error_2',
-        name: 'DetailedError',
-        errorCode: 'ERR_002',
-        errorMessage: 'Something went wrong',
-      },
-    });
-
-    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
-      .text;
-    expect(xml).toContain('camunda:errorMessage="Something went wrong"');
+    const ioMapping = res.extensionElements.find(
+      (e: any) => e.type === 'zeebe:IoMapping'
+    );
+    expect(ioMapping).toBeDefined();
   });
 });
 

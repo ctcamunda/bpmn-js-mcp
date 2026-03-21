@@ -32,17 +32,17 @@ describe('lane suggestion test cases (TODO-helpdesk)', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:assignee': 'requester' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'requester' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task2,
-      properties: { 'camunda:assignee': 'manager' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'manager' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task3,
-      properties: { 'camunda:assignee': 'hr-admin' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'hr-admin' } },
     });
 
     const res = parseResult(await handleSuggestLaneOrganization({ diagramId }));
@@ -78,12 +78,12 @@ describe('lane suggestion test cases (TODO-helpdesk)', () => {
     await handleSetProperties({
       diagramId,
       elementId: task1,
-      properties: { 'camunda:assignee': 'submitter' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'submitter' } },
     });
     await handleSetProperties({
       diagramId,
       elementId: task2,
-      properties: { 'camunda:assignee': 'reviewer' },
+      properties: { 'zeebe:assignmentDefinition': { assignee: 'reviewer' } },
     });
 
     const summary = parseResult(await handleSummarizeDiagram({ diagramId }));

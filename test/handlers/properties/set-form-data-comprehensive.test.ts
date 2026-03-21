@@ -1,209 +1,130 @@
 /**
- * Comprehensive tests for set_bpmn_form_data.
+ * Comprehensive tests for set_bpmn_form_data (Zeebe / Camunda 8).
  *
- * Covers validation constraints, enum fields, custom properties,
- * businessKey, and date patterns.
+ * Tests the three form-linking modes:
+ *   formId  — link a deployed Camunda Form
+ *   formKey — custom external form key
+ *   formJson — embed Camunda Form JSON inline (zeebe:UserTaskForm)
+ *
+ * Also covers get_properties round-trip and element-type validation.
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';
 import { handleSetFormData, handleGetProperties } from '../../../src/handlers';
 import { parseResult, createDiagram, addElement, clearDiagrams } from '../../helpers';
 
-/** Extract camunda:FormData from the extensionElements array returned by get_properties. */
-function getFormData(props: any): any {
-  return props.extensionElements?.find((e: any) => e.type === 'camunda:FormData');
+/** Extract zeebe:FormDefinition from extensionElements returned by get_properties. */
+function getFormDef(props: any): any {
+  return props.extensionElements?.find((e: any) => e.type === 'zeebe:FormDefinition');
+}
+/** Extract zeebe:UserTaskForm from extensionElements returned by get_properties. */
+function getUserTaskForm(props: any): any {
+  return props.extensionElements?.find((e: any) => e.type === 'zeebe:UserTaskForm');
 }
 
-describe('set_bpmn_form_data — comprehensive', () => {
+describe('set_bpmn_form_data — comprehensive (Zeebe)', () => {
   beforeEach(() => {
     clearDiagrams();
   });
 
-  test('creates form fields with validation constraints', async () => {
+  test('links a deployed form by formId', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Review' });
 
     const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: taskId,
-        fields: [
-          {
-            id: 'email',
-            label: 'Email Address',
-            type: 'string',
-            validation: [
-              { name: 'required' },
-              { name: 'minlength', config: '5' },
-              { name: 'maxlength', config: '100' },
-              { name: 'regex', config: '^[^@]+@[^@]+\\.[^@]+$' },
-            ],
-          },
-        ],
-      })
+      await handleSetFormData({ diagramId, elementId: taskId, formId: 'ReviewForm_v1' })
     );
     expect(res.success).toBe(true);
 
-    // Verify via get_properties
     const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const formData = getFormData(props);
-    expect(formData).toBeDefined();
-    expect(formData.fields).toHaveLength(1);
-    expect(formData.fields[0].id).toBe('email');
-    const constraints = formData.fields[0].validation;
-    expect(constraints).toHaveLength(4);
+    const formDef = getFormDef(props);
+    expect(formDef).toBeDefined();
+    expect(formDef.formId).toBe('ReviewForm_v1');
   });
 
-  test('creates enum field type with values', async () => {
+  test('sets a custom formKey', async () => {
     const diagramId = await createDiagram();
     const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Select' });
 
     const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: taskId,
-        fields: [
-          {
-            id: 'priority',
-            label: 'Priority Level',
-            type: 'enum',
-            defaultValue: 'medium',
-            values: [
-              { id: 'low', name: 'Low Priority' },
-              { id: 'medium', name: 'Medium Priority' },
-              { id: 'high', name: 'High Priority' },
-            ],
-          },
-        ],
-      })
+      await handleSetFormData({ diagramId, elementId: taskId, formKey: 'custom:my-form' })
     );
     expect(res.success).toBe(true);
 
     const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const formData = getFormData(props);
-    expect(formData.fields[0].type).toBe('enum');
-    expect(formData.fields[0].values).toHaveLength(3);
+    const formDef = getFormDef(props);
+    expect(formDef).toBeDefined();
+    expect(formDef.formKey).toBe('custom:my-form');
   });
 
-  test('supports businessKey parameter', async () => {
+  test('embeds form JSON via formJson (creates UserTaskForm)', async () => {
+    const diagramId = await createDiagram();
+    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Embedded' });
+
+    const formBody = JSON.stringify({ components: [{ key: 'name', type: 'textfield' }] });
+    const res = parseResult(
+      await handleSetFormData({ diagramId, elementId: taskId, formJson: formBody })
+    );
+    expect(res.success).toBe(true);
+
+    const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
+    const userTaskForm = getUserTaskForm(props);
+    expect(userTaskForm).toBeDefined();
+    expect(userTaskForm.body).toBe(formBody);
+
+    // Should also have a FormDefinition pointing to the embedded form
+    const formDef = getFormDef(props);
+    expect(formDef).toBeDefined();
+    expect(formDef.formKey).toContain('camunda-forms:bpmn:');
+  });
+
+  test('works on StartEvent', async () => {
     const diagramId = await createDiagram();
     const startId = await addElement(diagramId, 'bpmn:StartEvent', { name: 'Start Form' });
 
     const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: startId,
-        businessKey: 'orderId',
-        fields: [
-          { id: 'orderId', label: 'Order ID', type: 'string' },
-          { id: 'amount', label: 'Amount', type: 'long' },
-        ],
-      })
+      await handleSetFormData({ diagramId, elementId: startId, formId: 'StartForm_v1' })
     );
     expect(res.success).toBe(true);
+
+    const props = parseResult(await handleGetProperties({ diagramId, elementId: startId }));
+    const formDef = getFormDef(props);
+    expect(formDef).toBeDefined();
+    expect(formDef.formId).toBe('StartForm_v1');
   });
 
-  test('supports custom field properties', async () => {
+  test('replaces existing form definition on re-call', async () => {
     const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Custom Props' });
+    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Replace' });
 
-    const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: taskId,
-        fields: [
-          {
-            id: 'field1',
-            label: 'Field 1',
-            type: 'string',
-            properties: {
-              customProp: 'customValue',
-              anotherProp: '42',
-            },
-          },
-        ],
-      })
-    );
-    expect(res.success).toBe(true);
-  });
-
-  test('supports date field type with pattern', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Date Task' });
-
-    const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: taskId,
-        fields: [
-          {
-            id: 'dueDate',
-            label: 'Due Date',
-            type: 'date',
-            datePattern: 'dd/MM/yyyy',
-          },
-        ],
-      })
-    );
-    expect(res.success).toBe(true);
-  });
-
-  test('supports boolean field type', async () => {
-    const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Bool Task' });
-
-    const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: taskId,
-        fields: [
-          {
-            id: 'approved',
-            label: 'Approved?',
-            type: 'boolean',
-            defaultValue: 'false',
-          },
-        ],
-      })
-    );
-    expect(res.success).toBe(true);
+    // First call — formId
+    await handleSetFormData({ diagramId, elementId: taskId, formId: 'OldForm' });
+    // Second call — formKey overwrites
+    await handleSetFormData({ diagramId, elementId: taskId, formKey: 'new:key' });
 
     const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const formData = getFormData(props);
-    const field = formData?.fields?.[0];
-    expect(field?.type).toBe('boolean');
-    expect(field?.defaultValue).toBe('false');
+    const formDef = getFormDef(props);
+    expect(formDef.formKey).toBe('new:key');
+    // formId from previous call should be gone
+    expect(formDef.formId).toBeUndefined();
   });
 
-  test('supports multiple fields at once', async () => {
+  test('rejects unsupported element types', async () => {
     const diagramId = await createDiagram();
-    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Multi' });
+    const taskId = await addElement(diagramId, 'bpmn:ServiceTask', { name: 'Svc' });
+
+    await expect(
+      handleSetFormData({ diagramId, elementId: taskId, formId: 'SomeForm' })
+    ).rejects.toThrow();
+  });
+
+  test('returns no-op message when no form config provided', async () => {
+    const diagramId = await createDiagram();
+    const taskId = await addElement(diagramId, 'bpmn:UserTask', { name: 'Empty' });
 
     const res = parseResult(
-      await handleSetFormData({
-        diagramId,
-        elementId: taskId,
-        fields: [
-          { id: 'name', label: 'Name', type: 'string', validation: [{ name: 'required' }] },
-          { id: 'age', label: 'Age', type: 'long', validation: [{ name: 'min', config: '0' }] },
-          { id: 'active', label: 'Active', type: 'boolean' },
-          { id: 'birthday', label: 'Birthday', type: 'date', datePattern: 'yyyy-MM-dd' },
-          {
-            id: 'role',
-            label: 'Role',
-            type: 'enum',
-            values: [
-              { id: 'admin', name: 'Admin' },
-              { id: 'user', name: 'User' },
-            ],
-          },
-        ],
-      })
+      await handleSetFormData({ diagramId, elementId: taskId })
     );
-    expect(res.success).toBe(true);
-
-    const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
-    const formData = getFormData(props);
-    expect(formData?.fields).toHaveLength(5);
+    expect(res.message).toContain('No form configuration');
   });
 });

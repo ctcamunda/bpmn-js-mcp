@@ -169,7 +169,7 @@ Allowed dependency direction: top → bottom
 | `src/handlers/collaboration/`   | Collaboration: create-participant, create-lanes, assign-to-lane, wrap-process, handoff, etc.   |
 | `src/rebuild/`                  | Rebuild-based layout engine — topology-driven positioning using bpmn-js native AutoPlace       |
 | `src/rebuild/engine.ts`         | Main layout entry point: topological walk + positioning                                        |
-| `src/bpmnlint-plugin-bpmn-mcp/` | Custom bpmnlint plugin with Camunda 7 rules                                                    |
+| `src/bpmnlint-plugin-bpmn-mcp/` | Custom bpmnlint plugin with Camunda 8 (Zeebe) rules                                              |
 | `src/eval/`                     | Layout quality scoring harness: scenario builders, metrics, and `run-eval.ts` orchestrator     |
 | `src/eval/scenarios.ts`         | Deterministic BPMN scenario builders used for eval and CI scoring                              |
 | `src/eval/score.ts`             | Layout quality scoring algorithm (overlaps, crossings, spacing, orthogonality, etc.)           |
@@ -209,7 +209,7 @@ A polyfill for headless bpmn-js      → src/headless-polyfills.ts
 
 4. **Unified tool registry** — The `TOOL_REGISTRY` array in `src/handlers/index.ts` is the single source of truth. Both `TOOL_DEFINITIONS` and the dispatch map are auto-derived from it.
 
-5. **Camunda moddle extension** — `camunda-bpmn-moddle` is registered on every modeler instance, enabling Camunda-specific attributes.
+5. **Camunda moddle extension** — `zeebe-bpmn-moddle` is registered on every modeler instance, enabling Zeebe-specific attributes.
 
 6. **Implicit lint feedback** — Mutating handlers call `appendLintFeedback()` to surface error-level lint issues in their response.
 
