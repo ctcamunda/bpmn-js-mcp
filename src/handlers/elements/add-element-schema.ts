@@ -47,6 +47,7 @@ export const TOOL_DEFINITION = {
           'bpmn:IntermediateThrowEvent',
           'bpmn:BoundaryEvent',
           'bpmn:SubProcess',
+          'bpmn:AdHocSubProcess',
           'bpmn:TextAnnotation',
           'bpmn:DataObjectReference',
           'bpmn:DataStoreReference',
@@ -71,7 +72,7 @@ export const TOOL_DEFINITION = {
       isExpanded: {
         type: 'boolean',
         description:
-          'For bpmn:SubProcess only: true = expanded subprocess (large, inline children on same plane, 350×200), ' +
+          'For bpmn:SubProcess and bpmn:AdHocSubProcess: true = expanded subprocess (large, inline children on same plane, 350×200), ' +
           'false = collapsed subprocess (small, separate drilldown plane, 100×80). Default: true.',
       },
       hostElementId: {

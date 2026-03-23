@@ -40,6 +40,7 @@ export const ALLOWED_ELEMENT_TYPES = [
   'bpmn:IntermediateThrowEvent',
   'bpmn:BoundaryEvent',
   'bpmn:SubProcess',
+  'bpmn:AdHocSubProcess',
   'bpmn:TextAnnotation',
   'bpmn:DataObjectReference',
   'bpmn:DataStoreReference',
@@ -69,6 +70,7 @@ export const INSERTABLE_ELEMENT_TYPES = [
   'bpmn:IntermediateCatchEvent',
   'bpmn:IntermediateThrowEvent',
   'bpmn:SubProcess',
+  'bpmn:AdHocSubProcess',
   'bpmn:StartEvent',
   'bpmn:EndEvent',
 ] as const;

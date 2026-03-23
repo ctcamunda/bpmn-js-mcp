@@ -40,6 +40,7 @@ const TYPE_MAP: Record<string, string> = {
   intermediateThrowEvent: 'bpmn:IntermediateThrowEvent',
   boundaryEvent: 'bpmn:BoundaryEvent',
   subProcess: 'bpmn:SubProcess',
+  adHocSubProcess: 'bpmn:AdHocSubProcess',
   eventSubProcess: 'bpmn:SubProcess',
 };
 
@@ -634,7 +635,7 @@ export async function handleGenerateFromStructure(
             }
           }
 
-          if (bpmnType === 'bpmn:SubProcess') {
+          if (bpmnType.includes('SubProcess')) {
             addArgs.isExpanded = true;
           }
 
@@ -671,7 +672,7 @@ export async function handleGenerateFromStructure(
             }
           }
 
-          if (el.children && el.children.length > 0 && bpmnType === 'bpmn:SubProcess') {
+          if (el.children && el.children.length > 0 && bpmnType.includes('SubProcess')) {
             await createElementsRecursively(el.children, {
               parentId: createdId,
               scopeLabel: `sub-process ${el.id}`,
@@ -817,7 +818,7 @@ export const TOOL_DEFINITION = {
                 'businessRuleTask', 'sendTask', 'receiveTask', 'callActivity',
                 'exclusiveGateway', 'parallelGateway', 'inclusiveGateway',
                 'intermediateCatchEvent', 'intermediateThrowEvent',
-                'boundaryEvent', 'subProcess', 'eventSubProcess',
+                'boundaryEvent', 'subProcess', 'adHocSubProcess', 'eventSubProcess',
               ],
             },
             name: { type: 'string', description: 'Element name/label' },

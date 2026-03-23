@@ -55,7 +55,7 @@ function typePrefix(bpmnType: string): string {
   if (short.includes('Gateway')) return 'Gateway';
   if (short === 'StartEvent' || short === 'EndEvent') return short;
   if (short.includes('Event')) return 'Event';
-  if (short === 'SubProcess') return 'SubProcess';
+  if (short === 'SubProcess' || short === 'AdHocSubProcess') return short;
   if (short === 'CallActivity') return 'CallActivity';
   if (short.includes('Task')) return short; // UserTask, ServiceTask…
   if (short === 'TextAnnotation') return 'Annotation';

@@ -167,7 +167,7 @@ export function buildElementCounts(elementRegistry: any): Record<string, number>
 
   for (const el of elements) {
     const t = el.type || '';
-    if (t.includes('Task') || t === 'bpmn:CallActivity' || t === 'bpmn:SubProcess') {
+    if (t.includes('Task') || t === 'bpmn:CallActivity' || t.includes('SubProcess')) {
       tasks++;
     } else if (t.includes('Event')) {
       events++;

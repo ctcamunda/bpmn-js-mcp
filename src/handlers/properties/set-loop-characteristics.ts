@@ -121,6 +121,7 @@ export async function handleSetLoopCharacteristics(
   if (
     !bo.$type.includes('Task') &&
     bo.$type !== 'bpmn:SubProcess' &&
+    bo.$type !== 'bpmn:AdHocSubProcess' &&
     bo.$type !== 'bpmn:CallActivity'
   ) {
     throw typeMismatchError(elementId, bo.$type, [
@@ -128,6 +129,7 @@ export async function handleSetLoopCharacteristics(
       'bpmn:UserTask',
       'bpmn:ServiceTask',
       'bpmn:SubProcess',
+      'bpmn:AdHocSubProcess',
       'bpmn:CallActivity',
     ]);
   }

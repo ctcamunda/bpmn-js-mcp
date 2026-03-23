@@ -227,7 +227,7 @@ const TYPE_HINTS: Array<{ match: (type: string) => boolean; hints: Hint[] }> = [
     ],
   },
   {
-    match: (t) => t === 'bpmn:SubProcess',
+    match: (t) => t.includes('SubProcess'),
     hints: [
       {
         tool: 'set_bpmn_element_properties',

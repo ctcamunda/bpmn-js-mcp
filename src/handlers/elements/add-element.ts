@@ -40,7 +40,7 @@ export interface AddElementArgs {
   participantId?: string;
   /** Insert into an existing sequence flow, splitting and reconnecting automatically. */
   flowId?: string;
-  /** For SubProcess: true = expanded (large, inline children), false = collapsed (small, separate drilldown plane). Default: true. */
+  /** For SubProcess or AdHocSubProcess: true = expanded (large, inline children), false = collapsed (small, separate drilldown plane). Default: true. */
   isExpanded?: boolean;
   /** When afterElementId is set, automatically create a sequence flow from the reference element. Default: true. */
   autoConnect?: boolean;
@@ -205,8 +205,8 @@ export async function handleAddElement(args: AddElementArgs): Promise<ToolResult
     participantId,
     parentId,
   } = args;
-  // SubProcess defaults to expanded (true) unless explicitly set to false
-  const isExpanded = elementType === 'bpmn:SubProcess' ? args.isExpanded !== false : undefined;
+  // SubProcess variants default to expanded (true) unless explicitly set to false
+  const isExpanded = elementType.includes('SubProcess') ? args.isExpanded !== false : undefined;
   let { x = 100 } = args;
   let { y = 100 } = args;
   const diagram = requireDiagram(diagramId);

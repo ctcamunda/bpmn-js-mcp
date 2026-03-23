@@ -42,6 +42,7 @@ export const TOOL_DEFINITION = {
           'bpmn:IntermediateCatchEvent',
           'bpmn:IntermediateThrowEvent',
           'bpmn:SubProcess',
+          'bpmn:AdHocSubProcess',
           'bpmn:StartEvent',
           'bpmn:EndEvent',
         ],

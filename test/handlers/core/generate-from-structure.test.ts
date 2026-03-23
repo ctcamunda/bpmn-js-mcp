@@ -124,6 +124,40 @@ describe('generate_bpmn_from_structure', () => {
     expect(completeFlow.businessObject?.name).toBe('Complete review');
   });
 
+  test('creates and wires child elements inside ad hoc subprocesses', async () => {
+    const res = parseResult(
+      await handleGenerateFromStructure({
+        name: 'Ad Hoc Agent Process',
+        elements: [
+          {
+            id: 'agentSub',
+            type: 'adHocSubProcess',
+            name: 'Run Agents',
+            children: [
+              { id: 'childStart', type: 'startEvent' },
+              { id: 'childTask', type: 'userTask', name: 'Coordinate' },
+              { id: 'childEnd', type: 'endEvent' },
+            ],
+          },
+        ],
+        autoLayout: false,
+      })
+    );
+
+    expect(res.success).toBe(true);
+
+    const registry = getRegistry(res.diagramId);
+    const subprocess = registry.get(res.elementIdMap.agentSub);
+    const childStart = registry.get(res.elementIdMap.childStart);
+    const childTask = registry.get(res.elementIdMap.childTask);
+    const childEnd = registry.get(res.elementIdMap.childEnd);
+
+    expect(subprocess.type).toBe('bpmn:AdHocSubProcess');
+    expect(childStart.parent.id).toBe(subprocess.id);
+    expect(childTask.parent.id).toBe(subprocess.id);
+    expect(childEnd.parent.id).toBe(subprocess.id);
+  });
+
   test('maps multi-pool participant results by input order', async () => {
     const res = parseResult(
       await handleGenerateFromStructure({

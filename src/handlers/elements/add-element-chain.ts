@@ -70,6 +70,7 @@ const CHAIN_ELEMENT_TYPES = new Set([
   'bpmn:IntermediateCatchEvent',
   'bpmn:IntermediateThrowEvent',
   'bpmn:SubProcess',
+  'bpmn:AdHocSubProcess',
 ]);
 
 /**

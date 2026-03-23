@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { handleSetProperties, handleExportBpmn } from '../../../src/handlers';
+import { handleSetProperties, handleExportBpmn, handleGetProperties } from '../../../src/handlers';
 import { parseResult, createDiagram, addElement, clearDiagrams } from '../../helpers';
 
 describe('set_bpmn_element_properties', () => {
@@ -75,5 +75,29 @@ describe('set_bpmn_element_properties', () => {
       .text as string;
     expect(xml).toContain('zeebe:calledDecision');
     expect(xml).toContain('decisionId="myDecision"');
+  });
+
+  test('sets zeebe userTask marker without serializing a raw object attribute', async () => {
+    const diagramId = await createDiagram();
+    const taskId = await addElement(diagramId, 'bpmn:UserTask', {
+      name: 'Review',
+    });
+
+    const res = parseResult(
+      await handleSetProperties({
+        diagramId,
+        elementId: taskId,
+        properties: { 'zeebe:userTask': {} },
+      })
+    );
+    expect(res.success).toBe(true);
+
+    const props = parseResult(await handleGetProperties({ diagramId, elementId: taskId }));
+    expect(props.extensionElements.find((e: any) => e.type === 'zeebe:UserTask')).toBeDefined();
+
+    const xml = (await handleExportBpmn({ format: 'xml', diagramId, skipLint: true })).content[0]
+      .text as string;
+    expect(xml).toContain('zeebe:userTask');
+    expect(xml).not.toContain('zeebe:userTask="[object Object]"');
   });
 });

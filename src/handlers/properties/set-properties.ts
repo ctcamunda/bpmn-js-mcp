@@ -225,6 +225,36 @@ function handleFormDefinition(element: any, zeebeProps: Record<string, any>, dia
 }
 
 /**
+ * Handle `zeebe:userTask` - creates/removes zeebe:UserTask marker extension element.
+ * Mutates `zeebeProps` in-place (deletes the key after processing).
+ */
+function handleUserTaskMarker(element: any, zeebeProps: Record<string, any>, diagram: any): void {
+  if (!('zeebe:userTask' in zeebeProps)) return;
+
+  const moddle = getService(diagram.modeler, 'moddle');
+  const modeling = getService(diagram.modeler, 'modeling');
+  const bo = element.businessObject;
+  const marker = zeebeProps['zeebe:userTask'];
+  delete zeebeProps['zeebe:userTask'];
+
+  const shouldRemove = marker == null || marker === false || marker === '';
+
+  if (shouldRemove) {
+    const extensionElements = bo.extensionElements;
+    if (extensionElements?.values) {
+      extensionElements.values = extensionElements.values.filter(
+        (v: any) => v.$type !== 'zeebe:UserTask'
+      );
+      modeling.updateProperties(element, { extensionElements });
+    }
+    return;
+  }
+
+  const userTaskEl = moddle.create('zeebe:UserTask');
+  upsertExtensionElement(moddle, bo, modeling, element, 'zeebe:UserTask', userTaskEl);
+}
+
+/**
  * Handle `zeebe:properties` — creates zeebe:Properties extension element with
  * zeebe:Property children for generic key-value metadata.
  *
@@ -382,6 +412,7 @@ function applyPropsToElement(
   handleTaskDefinition(element, zeebeProps, diagram);
   handleAssignmentDefinition(element, zeebeProps, diagram);
   handleFormDefinition(element, zeebeProps, diagram);
+  handleUserTaskMarker(element, zeebeProps, diagram);
   handleZeebeProperties(element, zeebeProps, diagram);
   handleCalledDecision(element, zeebeProps, diagram);
   handleCalledElement(element, zeebeProps, diagram);
@@ -410,11 +441,16 @@ function applyPropsToElement(
     modeling.updateProperties(element, standardProps);
   }
 
-  // Strip empty-string zeebe extension attributes — they are misleading
-  // in the XML and should simply be omitted.
-  const nonEmptyZeebeProps: Record<string, any> = {};
+  // Only primitive leftover zeebe:* props are safe to serialize as namespaced
+  // attributes. Structured object payloads must be handled as extension
+  // elements; forwarding them to updateProperties produces XML like
+  // zeebe:userTask="[object Object]".
+  const nonEmptyZeebeProps: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(zeebeProps)) {
-    if (value !== '') nonEmptyZeebeProps[key] = value;
+    if (value === '' || value == null) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      nonEmptyZeebeProps[key] = value;
+    }
   }
   if (Object.keys(nonEmptyZeebeProps).length > 0) {
     modeling.updateProperties(element, nonEmptyZeebeProps);
@@ -535,6 +571,7 @@ export const TOOL_DEFINITION = {
           'bpmn:StartEvent',
           'bpmn:EndEvent',
           'bpmn:SubProcess',
+          'bpmn:AdHocSubProcess',
         ],
       },
     },

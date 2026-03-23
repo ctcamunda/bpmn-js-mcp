@@ -120,12 +120,13 @@ describe('tool-definitions', () => {
     expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'elementType']));
   });
 
-  test('add_bpmn_element enum includes BoundaryEvent and CallActivity', () => {
+  test('add_bpmn_element enum includes BoundaryEvent, CallActivity, and AdHocSubProcess', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'add_bpmn_element');
     const schema = getSchema(tool);
     const enumValues = schema.properties!.elementType.enum;
     expect(enumValues).toContain('bpmn:BoundaryEvent');
     expect(enumValues).toContain('bpmn:CallActivity');
+    expect(enumValues).toContain('bpmn:AdHocSubProcess');
     expect(enumValues).toContain('bpmn:TextAnnotation');
   });
 

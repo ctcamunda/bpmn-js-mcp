@@ -53,6 +53,7 @@ const REPLACEABLE_TYPES = new Set([
   'bpmn:StartEvent',
   'bpmn:EndEvent',
   'bpmn:SubProcess',
+  'bpmn:AdHocSubProcess',
 ]);
 
 export async function handleReplaceElement(args: ReplaceElementArgs): Promise<ToolResult> {
@@ -170,6 +171,7 @@ export const TOOL_DEFINITION = {
           'bpmn:StartEvent',
           'bpmn:EndEvent',
           'bpmn:SubProcess',
+          'bpmn:AdHocSubProcess',
         ],
         description: 'The new BPMN element type',
       },

@@ -116,7 +116,7 @@ export function resizeParentContainers(elementRegistry: any, modeling: any): voi
 
   // C1-5: Also resize expanded SubProcesses whose children have shifted past the right edge.
   const subprocesses = elementRegistry.filter(
-    (el: any) => el.type === 'bpmn:SubProcess' && el.collapsed !== true
+    (el: any) => el.type?.includes('SubProcess') && el.collapsed !== true
   );
   for (const sp of subprocesses) {
     resizeSubprocess(sp, elementRegistry, modeling);
@@ -199,7 +199,7 @@ export function createAndPlaceElement(opts: {
   const elementFactory = getService(diagram.modeler, 'elementFactory');
   const elementRegistry = getService(diagram.modeler, 'elementRegistry');
 
-  // For SubProcess elements, pass isExpanded to createShape so that
+  // For subprocess elements, pass isExpanded to createShape so that
   // bpmn-js's SubProcessPlaneBehavior correctly handles planes:
   //   - isExpanded: true  → large inline shape (350×200), no separate plane
   //   - isExpanded: false → collapsed shape (100×80), separate BPMNPlane for drilldown
@@ -208,7 +208,7 @@ export function createAndPlaceElement(opts: {
     id: descriptiveId,
     businessObject,
   };
-  if (elementType === 'bpmn:SubProcess' && isExpanded !== undefined) {
+  if (elementType.includes('SubProcess') && isExpanded !== undefined) {
     shapeAttrs.isExpanded = isExpanded;
   }
 

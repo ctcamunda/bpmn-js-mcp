@@ -80,6 +80,7 @@ const IO_MAPPING_TYPES = new Set([
   'bpmn:ReceiveTask',
   'bpmn:CallActivity',
   'bpmn:SubProcess',
+  'bpmn:AdHocSubProcess',
 ]);
 
 function validateConfigForElement(elementId: string, elementType: string, config: ZeebeElementConfig): void {

@@ -161,7 +161,7 @@ export async function handleAutoPlaceAdd(
   const businessObject = createBusinessObject(diagram.modeler, elementType, descriptiveId);
 
   const shapeAttrs: Record<string, any> = { type: elementType, id: descriptiveId, businessObject };
-  if (elementType === 'bpmn:SubProcess' && isExpanded !== undefined) {
+  if (elementType.includes('SubProcess') && isExpanded !== undefined) {
     shapeAttrs.isExpanded = isExpanded;
   }
 

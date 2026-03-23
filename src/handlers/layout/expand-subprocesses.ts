@@ -17,7 +17,7 @@ import { getService } from '../helpers';
  * - NOT a `triggeredByEvent` event subprocess
  */
 function isExpansionCandidate(el: any): boolean {
-  if (el.type !== 'bpmn:SubProcess') return false;
+  if (!el.type?.includes('SubProcess')) return false;
   if (el.di?.isExpanded === true) return false;
 
   const bo = el.businessObject;
@@ -31,7 +31,7 @@ function isExpansionCandidate(el: any): boolean {
 function expandOne(el: any, bpmnReplace: any): boolean {
   try {
     const result = bpmnReplace.replaceElement(el, {
-      type: 'bpmn:SubProcess',
+      type: el.type,
       isExpanded: true,
     });
     return result != null;

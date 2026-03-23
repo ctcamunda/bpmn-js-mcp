@@ -102,6 +102,30 @@ describe('add_bpmn_element — expanded subprocess', () => {
       // The subprocess should NOT have a separate BPMNPlane pointing to it
       expect(xml).not.toContain(`bpmnElement="${res.elementId}" />`);
     });
+
+    test('creates expanded ad hoc subprocess by default', async () => {
+      const diagramId = await createDiagram();
+
+      const res = parseResult(
+        await handleAddElement({
+          diagramId,
+          elementType: 'bpmn:AdHocSubProcess',
+          name: 'Agent Loop',
+        })
+      );
+      expect(res.success).toBe(true);
+      expect(res.elementType).toBe('bpmn:AdHocSubProcess');
+
+      const xml = await exportXml(diagramId);
+      expect(xml).toContain('<bpmn:adHocSubProcess');
+      expect(xml).toContain('isExpanded="true"');
+
+      const diagram = getDiagram(diagramId)!;
+      const registry = diagram.modeler.get('elementRegistry') as any;
+      const el = registry.get(res.elementId);
+      expect(el.width).toBe(350);
+      expect(el.height).toBe(200);
+    });
   });
 
   describe('set_bpmn_element_properties with isExpanded', () => {
