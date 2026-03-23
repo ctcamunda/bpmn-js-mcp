@@ -5,10 +5,10 @@
  * 1. add_bpmn_element_chain with a ParallelGateway emits deferredLayout:true
  *    and does NOT run auto-layout prematurely.
  * 2. After wiring parallel branches with connect_bpmn_elements, connect.ts
- *    emits an align_bpmn_elements nextStep for gateway connections.
+ *    emits a layout_bpmn_diagram nextStep for distribution guidance.
  * 3. After layout_bpmn_diagram, branch tasks have non-overlapping Y positions
  *    (resolvePositionOverlaps fix: full branchSpacing instead of half).
- * 4. After align_bpmn_elements, the lane membership of all elements is
+ * 4. After alignment, the lane membership of all elements is
  *    unchanged (no lane drift).
  */
 
@@ -200,12 +200,12 @@ describe('Story 2: Parallel Review — Fork / Join with Lanes', () => {
       );
       expect(r.success).toBe(true);
 
-      // Fix #8: connect from ParallelGateway must suggest align_bpmn_elements
+      // Fix #8: connect from ParallelGateway must suggest the consolidated layout tool
       const nextStepTools: string[] = (r.nextSteps ?? []).map((ns: any) => ns.tool);
       expect(
         nextStepTools,
-        'connect from ParallelGateway should suggest align_bpmn_elements'
-      ).toContain('align_bpmn_elements');
+        'connect from ParallelGateway should suggest layout_bpmn_diagram'
+      ).toContain('layout_bpmn_diagram');
     };
     await connectSplit(s.reviewAId);
     await connectSplit(s.reviewBId);

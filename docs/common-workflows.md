@@ -113,8 +113,8 @@ Interrupt a task after a timeout.
 ## 7. Create a collaboration diagram (pool with external partner)
 
 Model message exchange between your process and an external system.
-In Camunda 7, only one pool is executable; additional pools are
-collapsed to document message endpoints.
+For executable Camunda 8 models, only one pool should be executable;
+additional pools should be collapsed to document message endpoints.
 
 ```
 1. create_bpmn_participant   → {
@@ -153,18 +153,18 @@ Handle errors that can occur anywhere in the process scope.
 
 ---
 
-## 9. Configure an external service task (Camunda 7)
+## 9. Configure a Zeebe service task
 
 ```
 1. add_bpmn_element            → { elementType: "bpmn:ServiceTask", name: "Send Invoice" }
 2. set_bpmn_element_properties → { elementId: "<serviceTaskId>",
                                     properties: {
-                                      "camunda:type": "external",
-                                      "camunda:topic": "send-invoice"
+                                      "zeebe:type": "send-invoice",
+                                      "zeebe:retries": "3"
                                     } }
 3. set_bpmn_input_output_mapping → { elementId: "<serviceTaskId>",
-                                      inputParameters:  [{ name: "orderId", value: "${orderId}" }],
-                                      outputParameters: [{ name: "invoiceId", value: "${invoiceId}" }] }
+                                      inputParameters:  [{ name: "orderId", value: "= orderId" }],
+                                      outputParameters: [{ name: "invoiceId", value: "= invoiceId" }] }
 ```
 
 ---
@@ -193,7 +193,7 @@ Create a pool with lanes and assign tasks to the appropriate lane.
                                       afterElementId: "<reviewId>" }
 5. add_bpmn_element              → { elementType: "bpmn:EndEvent", name: "Completed",
                                       afterElementId: "<approveId>" }
-6. wrap_bpmn_process_in_collaboration → { participants: [{ name: "Approval Process" }] }
+6. create_bpmn_participant       → { name: "Approval Process", wrapExisting: true }
 7. create_bpmn_lanes             → { participantId: "<poolId>",
                                       lanes: [{ name: "Requester" }, { name: "Approver" }] }
 8. assign_bpmn_elements_to_lane  → { laneId: "<requesterId>",
@@ -214,7 +214,7 @@ Migrate an existing flat process into lanes without duplicating elements.
 
 ```
 1. list_bpmn_elements            → identify element IDs and their roles
-2. wrap_bpmn_process_in_collaboration → { participants: [{ name: "My Process" }] }
+2. create_bpmn_participant       → { name: "My Process", wrapExisting: true }
 3. create_bpmn_lanes             → { participantId: "<poolId>",
                                       lanes: [
                                         { name: "Customer" },
@@ -232,7 +232,7 @@ Migrate an existing flat process into lanes without duplicating elements.
 
 **Key points:**
 
-- `wrap_bpmn_process_in_collaboration` preserves existing elements — no duplication.
+- `create_bpmn_participant` with `wrapExisting: true` preserves existing elements — no duplication.
 - Assign elements to lanes by **role** (Requester, Approver, Finance),
   not by task type (UserTask, ServiceTask).
 - Keep 2–3 lanes for readability. More than 4 usually means the process
@@ -243,12 +243,12 @@ Migrate an existing flat process into lanes without duplicating elements.
 
 ## 13. Create a cross-lane handoff
 
-Use `handoff_bpmn_to_lane` when one role passes work to another.
+Use `add_bpmn_element` with `fromElementId` + `toLaneId` when one role passes work to another.
 
 ```
-1. handoff_bpmn_to_lane          → { fromElementId: "<customerTaskId>",
+1. add_bpmn_element              → { elementType: "bpmn:UserTask",
+                                      fromElementId: "<customerTaskId>",
                                       toLaneId: "<supportLaneId>",
-                                      mode: "sequence",
                                       name: "Handle Request" }
 ```
 
@@ -325,17 +325,18 @@ source element's lane to avoid landing in an unrelated middle lane.
 ## 16. Manually route a loopback flow
 
 When a gateway has a "No" branch that loops back to an earlier task,
-the auto-router may create zigzag paths. Use `set_bpmn_connection_waypoints`
+the auto-router may create zigzag paths. Use `connect_bpmn_elements` in
+waypoint mode
 to set clean U-shaped waypoints:
 
 ```
 1. list_bpmn_elements          → find the loopback flow ID and element positions
-2. set_bpmn_connection_waypoints → { connectionId: "Flow_No",
+2. connect_bpmn_elements         → { connectionId: "Flow_No",
                                       waypoints: [
-                                        { x: 425, y: 230 },   // gateway bottom
-                                        { x: 425, y: 350 },   // drop down
-                                        { x: 250, y: 350 },   // go left
-                                        { x: 250, y: 230 }    // rise up to target
+                                        { x: 425, y: 230 },
+                                        { x: 425, y: 350 },
+                                        { x: 250, y: 350 },
+                                        { x: 250, y: 230 }
                                       ] }
 ```
 

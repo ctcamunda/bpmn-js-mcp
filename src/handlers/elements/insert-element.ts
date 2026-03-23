@@ -1,10 +1,6 @@
 /**
- * Handler for insert_bpmn_element tool.
- *
- * Inserts a new element into an existing sequence flow, splitting the
- * flow and reconnecting automatically.  Accepts a flowId, elementType,
- * and optional name — a very common operation when modifying existing
- * diagrams.
+ * Legacy standalone flow-insertion helper retained for internal reuse.
+ * External callers should use add_bpmn_element with flowId.
  */
 // @mutating
 
@@ -62,7 +58,7 @@ function validateInsertionArgs(
     throw new McpError(
       ErrorCode.InvalidRequest,
       `Element ${flowId} is not a SequenceFlow (got: ${flowType}). ` +
-        'insert_bpmn_element only works with sequence flows.'
+        'Flow insertion only works with sequence flows.'
     );
   }
   if (!flow.source || !flow.target) {
@@ -371,4 +367,3 @@ export async function handleInsertElement(args: InsertElementArgs): Promise<Tool
   return appendLintFeedback(result, diagram);
 }
 
-export { TOOL_DEFINITION } from './insert-element-schema';

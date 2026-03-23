@@ -13,6 +13,31 @@
  */
 export const EXECUTABLE_CAMUNDA8_GUIDE = `# Executable BPMN for Camunda 8 (Zeebe)
 
+## Preferred authoring path
+
+### Start with the generator when the process description is already concrete
+
+- Prefer \`generate_bpmn_from_structure\` for **first-pass construction** when the user already provides most of the workflow shape: the main steps, major branches, lanes or participants, and obvious subprocess boundaries.
+- This is the fastest way to produce an initial BPMN skeleton that can then be refined into a deployable Camunda 8 model.
+- After generation, switch to the specialized executable-authoring tools to add Zeebe semantics and fix any structure details the generator did not capture.
+
+### Use specialized tools as the executable-authoring surface
+
+- Treat the specialized BPMN property tools as the **primary authoring surface** for executable behavior.
+- In practice, that means using:
+  - \`set_bpmn_element_properties\` for task definitions, assignment, called-process or decision IDs, and core Zeebe attributes
+  - \`set_bpmn_input_output_mapping\` for FEEL I/O mappings
+  - \`set_bpmn_form_data\` for user-task forms
+  - \`set_bpmn_event_definition\`, \`set_bpmn_loop_characteristics\`, and related specialized tools for their specific BPMN concerns
+- Use \`configure_bpmn_zeebe_extensions\` only as an **optional batch shortcut** when the structure is already stable and you want to apply repeated Zeebe setup across multiple elements in one call.
+- Do not assume \`configure_bpmn_zeebe_extensions\` is a full replacement for the specialized tools; it is intentionally narrower.
+
+### Reserve low-level element tools for refinement
+
+- Prefer the low-level element and layout tools when the task is primarily an **incremental edit** to an existing diagram.
+- They are also the better fit for **geometry-sensitive refinements**, label cleanup, custom routing, and manual corrections after generation.
+- For advanced BPMN constructs that are still easier to model explicitly, use \`add_bpmn_element\`, \`connect_bpmn_elements\`, and related tools directly.
+
 ## Deployment constraints
 
 - **One executable pool per deployment.** In a collaboration diagram, only one
@@ -252,4 +277,5 @@ Zeebe extension elements are configured as \`zeebe:\` prefixed properties.
 - \`set_bpmn_loop_characteristics\` — multi-instance configuration
 - \`set_bpmn_camunda_listeners\` — execution/task listeners (job-worker-based)
 - \`set_bpmn_call_activity_variables\` — call activity variable propagation
+- \`configure_bpmn_zeebe_extensions\` — optional batch shortcut for repeated Zeebe setup across multiple elements; use after the specialized tools are understood, not instead of them
 `;

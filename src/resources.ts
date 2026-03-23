@@ -66,7 +66,7 @@ export const RESOURCE_TEMPLATES = [
     name: 'Diagram elements',
     description:
       'All elements in the diagram with types, names, positions, connections, and Zeebe extensions. ' +
-      'Equivalent to calling list_bpmn_elements without filters.',
+      'Equivalent to calling inspect_bpmn with mode=elements and no filters.',
     mimeType: 'application/json',
   },
 ];

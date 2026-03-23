@@ -47,12 +47,11 @@ const { version: PKG_VERSION } = require('../package.json') as { version: string
 const TOOL_GROUPS: Record<string, string[]> = {
   batch: ['batch_bpmn_operations'],
   history: ['bpmn_history'],
-  layout: ['layout_bpmn_diagram', 'align_bpmn_elements'],
+  layout: ['layout_bpmn_diagram'],
   collaboration: [
     'create_bpmn_participant',
     'create_bpmn_lanes',
-    'assign_bpmn_elements_to_lane',
-    'analyze_bpmn_lanes',
+    'manage_bpmn_lanes',
     'manage_bpmn_root_elements',
   ],
   /** All Zeebe/Camunda property setters. */
@@ -65,11 +64,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
     'set_bpmn_call_activity_variables',
   ],
   /** Higher-level analysis / read-only tools (safe to hide for simple use-cases). */
-  analysis: [
-    'validate_bpmn_diagram',
-    'analyze_bpmn_lanes',
-    'list_bpmn_process_variables',
-  ],
+  analysis: ['inspect_bpmn', 'manage_bpmn_lanes'],
 };
 
 /** Expand a comma-separated list of tool names / group names to individual tool names. */

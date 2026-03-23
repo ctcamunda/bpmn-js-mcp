@@ -55,7 +55,7 @@ async function checkLintGate(
           skipLintWarning:
             `⚠️ skipLint bypassed ${errors.length} error(s): ${summary}${suffix}. ` +
             'The exported diagram may have structural issues. ' +
-            'Run validate_bpmn_diagram to review all issues.',
+            'Run inspect_bpmn with mode: "validation" to review all issues.',
         };
       }
     } catch {

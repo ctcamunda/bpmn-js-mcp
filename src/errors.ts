@@ -88,7 +88,7 @@ export function diagramNotFoundError(diagramId: string): McpError {
 export function elementNotFoundError(elementId: string): McpError {
   return createMcpError(
     ErrorCode.InvalidRequest,
-    `Element not found: ${elementId}. Use list_bpmn_elements to see available element IDs.`,
+    `Element not found: ${elementId}. Use inspect_bpmn with mode: "elements" to see available element IDs.`,
     ERR_ELEMENT_NOT_FOUND,
     { elementId }
   );

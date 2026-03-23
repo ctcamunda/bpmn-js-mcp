@@ -186,8 +186,9 @@ function cleanupEmptyLaneSets(modeler: any): string[] {
 
 const DELETE_NEXT_STEPS = [
   {
-    tool: 'validate_bpmn_diagram',
-    description: 'Validate the diagram to check for disconnected elements or missing connections.',
+    tool: 'inspect_bpmn',
+    description:
+      'Run inspect_bpmn with mode: "validation" to check for disconnected elements or missing connections.',
   },
   {
     tool: 'layout_bpmn_diagram',

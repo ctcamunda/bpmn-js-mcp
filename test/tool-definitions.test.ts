@@ -14,7 +14,7 @@ describe('tool-definitions', () => {
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
 
   test('exports the expected number of tools', () => {
-    expect(TOOL_DEFINITIONS.length).toBe(32);
+    expect(TOOL_DEFINITIONS.length).toBe(25);
   });
 
   test.each([
@@ -23,15 +23,10 @@ describe('tool-definitions', () => {
     'connect_bpmn_elements',
     'delete_bpmn_element',
     'move_bpmn_element',
-    'get_bpmn_element_properties',
     'export_bpmn',
-    'list_bpmn_elements',
     'set_bpmn_element_properties',
     'import_bpmn_xml',
-    'delete_bpmn_diagram',
-    'list_bpmn_diagrams',
-    'validate_bpmn_diagram',
-    'align_bpmn_elements',
+    'inspect_bpmn',
     'set_bpmn_input_output_mapping',
     'set_bpmn_event_definition',
     'set_bpmn_form_data',
@@ -44,15 +39,13 @@ describe('tool-definitions', () => {
     'manage_bpmn_root_elements',
     'create_bpmn_lanes',
     'create_bpmn_participant',
-    'analyze_bpmn_lanes',
-    // redistribute_bpmn_elements_across_lanes removed — use analyze_bpmn_lanes with mode: redistribute
+    'manage_bpmn_lanes',
+    // redistribute_bpmn_elements_across_lanes removed — use manage_bpmn_lanes with mode: redistribute
     // replace_bpmn_element removed — use set_bpmn_element_properties with elementType
-    'list_bpmn_process_variables',
     // clone_bpmn_diagram removed — use create_bpmn_diagram with cloneFrom
-    // diff_bpmn_diagrams removed — use list_bpmn_diagrams with compareWith
+    // diff_bpmn_diagrams removed — use inspect_bpmn with mode: diff
     'add_bpmn_element_chain',
     // set_bpmn_connection_waypoints removed — use connect_bpmn_elements with connectionId + waypoints
-    'assign_bpmn_elements_to_lane',
     'generate_bpmn_from_structure',
     'configure_bpmn_zeebe_extensions',
     // wrap_bpmn_process_in_collaboration removed — use create_bpmn_participant with wrapExisting
@@ -81,10 +74,11 @@ describe('tool-definitions', () => {
     expect(schema.properties).toHaveProperty('mergeFrom');
   });
 
-  test('list_bpmn_diagrams has compareWith parameter (merged from diff_bpmn_diagrams)', () => {
-    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'list_bpmn_diagrams');
+  test('inspect_bpmn supports diagram diff mode', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'inspect_bpmn');
     const schema = getSchema(tool);
     expect(schema.properties).toHaveProperty('compareWith');
+    expect(schema.properties!.mode.enum).toContain('diff');
   });
 
   test('layout_bpmn_diagram has autosizeOnly parameter (merged from autosize_bpmn_pools_and_lanes)', () => {
@@ -93,9 +87,10 @@ describe('tool-definitions', () => {
     expect(schema.properties).toHaveProperty('autosizeOnly');
   });
 
-  test('analyze_bpmn_lanes has redistribute mode (merged from redistribute_bpmn_elements_across_lanes)', () => {
-    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'analyze_bpmn_lanes');
+  test('manage_bpmn_lanes has assign and redistribute modes', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'manage_bpmn_lanes');
     const schema = getSchema(tool);
+    expect(schema.properties!.mode.enum).toContain('assign');
     expect(schema.properties!.mode.enum).toContain('redistribute');
   });
 
@@ -148,12 +143,6 @@ describe('tool-definitions', () => {
     expect(schema.properties!.conditionExpression).toBeDefined();
   });
 
-  test('align_bpmn_elements requires diagramId and elementIds', () => {
-    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'align_bpmn_elements');
-    const schema = getSchema(tool);
-    expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'elementIds']));
-  });
-
   test('set_bpmn_input_output_mapping has inputParameters and outputParameters with source/target', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'set_bpmn_input_output_mapping');
     const schema = getSchema(tool);
@@ -177,14 +166,15 @@ describe('tool-definitions', () => {
     expect(schema.required).toEqual(expect.arrayContaining(['diagramId', 'elementId']));
   });
 
-  test('align_bpmn_elements has compact and distribute parameters', () => {
-    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'align_bpmn_elements');
+  test('layout_bpmn_diagram has align/distribute parameters', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'layout_bpmn_diagram');
     const schema = getSchema(tool);
     expect(schema.properties!.compact).toBeDefined();
     expect(schema.properties!.compact.type).toBe('boolean');
     expect(schema.properties!.orientation).toBeDefined();
     expect(schema.properties!.gap).toBeDefined();
     expect(schema.properties!.gap.type).toBe('number');
+    expect(schema.properties!.elementIds).toBeDefined();
   });
 
   test('connect_bpmn_elements has isDefault parameter', () => {
@@ -206,6 +196,27 @@ describe('tool-definitions', () => {
     const tool = TOOL_DEFINITIONS.find((t) => t.name === 'layout_bpmn_diagram');
     const schema = getSchema(tool);
     expect(schema.required).toContain('diagramId');
+  });
+
+  test('layout_bpmn_diagram supports align/distribute modes', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'layout_bpmn_diagram');
+    const schema = getSchema(tool);
+    expect(schema.properties).toHaveProperty('mode');
+    expect(schema.properties!.mode.enum).toEqual(
+      expect.arrayContaining(['layout', 'align', 'distribute', 'labels', 'autosize'])
+    );
+    expect(schema.properties).toHaveProperty('alignment');
+    expect(schema.properties).toHaveProperty('orientation');
+  });
+
+  test('inspect_bpmn supports validation and element inspection modes', () => {
+    const tool = TOOL_DEFINITIONS.find((t) => t.name === 'inspect_bpmn');
+    const schema = getSchema(tool);
+    expect(schema.properties!.mode.enum).toEqual(
+      expect.arrayContaining(['elements', 'element', 'validation', 'variables'])
+    );
+    expect(schema.properties).toHaveProperty('elementId');
+    expect(schema.properties).toHaveProperty('lintMinSeverity');
   });
 
   test('set_bpmn_camunda_listeners has taskListeners parameter', () => {

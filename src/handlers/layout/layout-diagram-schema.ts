@@ -8,7 +8,9 @@
 export const TOOL_DEFINITION = {
   name: 'layout_bpmn_diagram',
   description:
-    'Automatically arrange elements in a BPMN diagram using the rebuild-based layout engine, producing a clean left-to-right layout. Handles parallel branches, reconverging gateways, boundary events, subprocesses, pools, lanes, and nested containers. Use this after structural changes (adding gateways, splitting flows) to automatically clean up the layout. ' +
+    'Unified layout interface for BPMN diagrams. ' +
+    'Use mode=layout (default) for full rebuild-based auto-layout, mode=align to align elements, mode=distribute to distribute elements, mode=labels to adjust labels only, and mode=autosize to resize pools and lanes without moving flow nodes. ' +
+    'Full layout produces a clean left-to-right arrangement and handles parallel branches, reconverging gateways, boundary events, subprocesses, pools, lanes, and nested containers. Use this after structural changes (adding gateways, splitting flows) to automatically clean up the layout. ' +
     'Use dryRun to preview changes before applying them. ' +
     'Use labelsOnly: true to only adjust label positions without moving elements. ' +
     'Non-orthogonal (Z-shaped) connection routing is automatically corrected after layout (pass straightenFlows: false to disable). ' +
@@ -17,6 +19,12 @@ export const TOOL_DEFINITION = {
     type: 'object',
     properties: {
       diagramId: { type: 'string', description: 'The diagram ID' },
+      mode: {
+        type: 'string',
+        enum: ['layout', 'align', 'distribute', 'labels', 'autosize'],
+        description:
+          'Optional layout sub-mode. layout = full auto-layout (default), align = align elements, distribute = distribute elements, labels = labels-only cleanup, autosize = resize pools/lanes only.',
+      },
       scopeElementId: {
         type: 'string',
         description:
@@ -57,13 +65,35 @@ export const TOOL_DEFINITION = {
         type: 'boolean',
         description:
           'When true, only resize pools and lanes to fit their contents without running full layout. ' +
-          'Equivalent to the former autosize_bpmn_pools_and_lanes tool. ' +
           'Accepts participantId to scope resizing to a single pool. Default: false.',
       },
       participantId: {
         type: 'string',
         description:
           'Optional. When autosizeOnly is true, scope pool resizing to this participant ID.',
+      },
+      elementIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Element IDs for mode=align or mode=distribute.',
+      },
+      alignment: {
+        type: 'string',
+        enum: ['left', 'center', 'right', 'top', 'middle', 'bottom'],
+        description: 'Alignment direction for mode=align.',
+      },
+      compact: {
+        type: 'boolean',
+        description: 'When true in mode=align, also redistributes aligned elements with standard BPMN gaps.',
+      },
+      orientation: {
+        type: 'string',
+        enum: ['horizontal', 'vertical'],
+        description: 'Distribution direction for mode=distribute.',
+      },
+      gap: {
+        type: 'number',
+        description: 'Optional fixed edge-to-edge gap in pixels for mode=distribute.',
       },
       straightenFlows: {
         type: 'boolean',

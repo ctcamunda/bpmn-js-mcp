@@ -8,12 +8,11 @@
 
 import { type ToolResult, type ToolContext } from '../../types';
 import { missingRequiredError, semanticViolationError } from '../../errors';
-import { validateArgs, jsonResult, requireDiagram, getService, syncXml } from '../helpers';
+import { validateArgs, jsonResult, requireDiagram, getService } from '../helpers';
 import { appendLintFeedback, setBatchMode } from '../../linter';
 import { handleCreateDiagram } from './create-diagram';
 import { handleAddElement, type AddElementArgs } from '../elements/add-element';
 import { handleConnect } from '../elements/connect';
-import { handleSetEventDefinition } from '../properties/set-event-definition';
 import { handleSetProperties } from '../properties/set-properties';
 import { handleCreateParticipant } from '../collaboration/create-participant';
 import { handleAssignElementsToLane } from '../collaboration/assign-elements-to-lane';
@@ -73,6 +72,10 @@ function resolveEventDefType(type: string): string {
   return EVENT_DEF_TYPE_MAP[type] || `bpmn:${type.charAt(0).toUpperCase() + type.slice(1)}EventDefinition`;
 }
 
+interface AutoIdState {
+  value: number;
+}
+
 // ── Input types ────────────────────────────────────────────────────────────
 
 export interface ProcessElement {
@@ -93,6 +96,7 @@ export interface ProcessElement {
   };
   lane?: string;
   children?: ProcessElement[];
+  connections?: ProcessConnection[];
 }
 
 export interface ProcessConnection {
@@ -131,7 +135,10 @@ export interface GenerateFromStructureArgs {
  * Elements without `after` come first (in original order), then dependents.
  * Boundary events (attachedTo) are sorted after their host.
  */
-function topologicalSort(elements: ProcessElement[]): ProcessElement[] {
+function topologicalSort(elements: ProcessElement[]): {
+  sorted: ProcessElement[];
+  cycleIds: string[];
+} {
   // Build adjacency: element depends on its `after` or `attachedTo` target
   const byId = new Map<string, ProcessElement>();
   for (const el of elements) {
@@ -141,14 +148,13 @@ function topologicalSort(elements: ProcessElement[]): ProcessElement[] {
   const sorted: ProcessElement[] = [];
   const visited = new Set<string>();
   const visiting = new Set<string>(); // cycle detection
+  const cycleIds = new Set<string>();
 
   function visit(el: ProcessElement): void {
     const elId = el.id || '';
     if (visited.has(elId)) return;
     if (visiting.has(elId)) {
-      // Cycle — just add it, don't loop forever
-      sorted.push(el);
-      visited.add(elId);
+      cycleIds.add(elId);
       return;
     }
     visiting.add(elId);
@@ -156,19 +162,237 @@ function topologicalSort(elements: ProcessElement[]): ProcessElement[] {
     // Visit dependency first
     const depId = el.attachedTo || el.after;
     if (depId && byId.has(depId)) {
+      if (visiting.has(depId)) {
+        cycleIds.add(elId);
+        cycleIds.add(depId);
+      }
       visit(byId.get(depId)!);
     }
 
     visiting.delete(elId);
-    visited.add(elId);
-    sorted.push(el);
+    if (!visited.has(elId)) {
+      visited.add(elId);
+      sorted.push(el);
+    }
   }
 
   for (const el of elements) {
     visit(el);
   }
 
-  return sorted;
+  return { sorted, cycleIds: [...cycleIds] };
+}
+
+function assignGeneratedIds(elements: ProcessElement[], autoIdState: AutoIdState): void {
+  for (const el of elements) {
+    if (!el.id) {
+      el.id = `_gen_${autoIdState.value++}`;
+    }
+    if (el.children && el.children.length > 0) {
+      assignGeneratedIds(el.children, autoIdState);
+    }
+  }
+}
+
+function mapLaneIdsByOrder(
+  lanes: ProcessLane[] | undefined,
+  laneIds: string[] | undefined,
+  laneIdMap: Record<string, string>
+): number {
+  if (!lanes || !laneIds) return 0;
+
+  let mapped = 0;
+  for (let i = 0; i < Math.min(lanes.length, laneIds.length); i++) {
+    const lane = lanes[i];
+    laneIdMap[lane.id || lane.name] = laneIds[i];
+    mapped++;
+  }
+  return mapped;
+}
+
+async function connectionAlreadyExists(
+  diagramId: string,
+  sourceId: string,
+  targetId: string
+): Promise<boolean> {
+  const diagram = requireDiagram(diagramId);
+  const registry = getService(diagram.modeler, 'elementRegistry');
+  const sourceEl = registry.get(sourceId);
+  if (!sourceEl) return false;
+
+  const existingOutgoing = (sourceEl.outgoing || []) as any[];
+  return existingOutgoing.some((conn: any) => conn.target?.id === targetId);
+}
+
+async function createImplicitConnections(
+  diagramId: string,
+  elements: ProcessElement[],
+  elementIdMap: Record<string, string>,
+  warnings: string[],
+  incrementConnectionCount: () => void
+): Promise<void> {
+  const autoConnections = deduceSequentialConnections(elements);
+  const connectedPairs = new Set<string>();
+
+  for (const conn of autoConnections) {
+    const pairKey = `${conn.from}→${conn.to}`;
+    if (connectedPairs.has(pairKey)) continue;
+
+    const sourceId = elementIdMap[conn.from];
+    const targetId = elementIdMap[conn.to];
+    if (!sourceId || !targetId) continue;
+
+    if (await connectionAlreadyExists(diagramId, sourceId, targetId)) {
+      connectedPairs.add(pairKey);
+      continue;
+    }
+
+    try {
+      await handleConnect({
+        diagramId,
+        sourceElementId: sourceId,
+        targetElementId: targetId,
+        label: conn.label,
+      });
+      incrementConnectionCount();
+      connectedPairs.add(pairKey);
+    } catch (e: any) {
+      warnings.push(`Failed to auto-connect ${conn.from} → ${conn.to}: ${e.message}`);
+    }
+  }
+}
+
+async function createScopedConnections(
+  diagramId: string,
+  elements: ProcessElement[],
+  explicitConnections: ProcessConnection[] | undefined,
+  elementIdMap: Record<string, string>,
+  warnings: string[],
+  errors: string[],
+  incrementConnectionCount: () => void
+): Promise<void> {
+  const autoConnections = deduceSequentialConnections(elements);
+  const explicitPairs = new Set<string>();
+  if (explicitConnections) {
+    for (const conn of explicitConnections) {
+      explicitPairs.add(`${conn.from}→${conn.to}`);
+    }
+  }
+
+  const connectedPairs = new Set<string>();
+
+  for (const conn of autoConnections) {
+    const pairKey = `${conn.from}→${conn.to}`;
+    if (explicitPairs.has(pairKey) || connectedPairs.has(pairKey)) continue;
+
+    const sourceId = elementIdMap[conn.from];
+    const targetId = elementIdMap[conn.to];
+    if (!sourceId || !targetId) continue;
+
+    if (await connectionAlreadyExists(diagramId, sourceId, targetId)) {
+      connectedPairs.add(pairKey);
+      continue;
+    }
+
+    try {
+      await handleConnect({
+        diagramId,
+        sourceElementId: sourceId,
+        targetElementId: targetId,
+        label: conn.label,
+      });
+      incrementConnectionCount();
+      connectedPairs.add(pairKey);
+    } catch (e: any) {
+      warnings.push(`Failed to auto-connect ${conn.from} → ${conn.to}: ${e.message}`);
+    }
+  }
+
+  if (!explicitConnections) {
+    return;
+  }
+
+  for (const conn of explicitConnections) {
+    const pairKey = `${conn.from}→${conn.to}`;
+    if (connectedPairs.has(pairKey)) {
+      if (conn.condition || conn.isDefault || conn.label) {
+        const sourceId = elementIdMap[conn.from];
+        const targetId = elementIdMap[conn.to];
+        if (sourceId && targetId) {
+          try {
+            const diagram = requireDiagram(diagramId);
+            const registry = getService(diagram.modeler, 'elementRegistry');
+            const sourceEl = registry.get(sourceId);
+            const existingConn = (sourceEl?.outgoing || []).find(
+              (connection: any) => connection.target?.id === targetId
+            );
+            if (existingConn) {
+              const props: Record<string, any> = {};
+              if (conn.label) props.name = conn.label;
+              if (conn.condition) props.conditionExpression = conn.condition;
+              await handleSetProperties({
+                diagramId,
+                elementId: existingConn.id,
+                properties: props,
+              });
+              if (conn.isDefault) {
+                await handleSetProperties({
+                  diagramId,
+                  elementId: sourceId,
+                  properties: { default: existingConn.id },
+                });
+              }
+            }
+          } catch (e: any) {
+            warnings.push(
+              `Failed to update connection properties ${conn.from} → ${conn.to}: ${e.message}`
+            );
+          }
+        }
+      }
+      continue;
+    }
+
+    const sourceId = elementIdMap[conn.from];
+    const targetId = elementIdMap[conn.to];
+    if (!sourceId || !targetId) {
+      errors.push(
+        `Connection ${conn.from} → ${conn.to}: ` +
+          `${!sourceId ? `source "${conn.from}" not found` : ''}` +
+          `${!sourceId && !targetId ? ', ' : ''}` +
+          `${!targetId ? `target "${conn.to}" not found` : ''}`
+      );
+      continue;
+    }
+
+    try {
+      const connectResult = parseResultText(
+        await handleConnect({
+          diagramId,
+          sourceElementId: sourceId,
+          targetElementId: targetId,
+          label: conn.label,
+          conditionExpression: conn.condition,
+        })
+      );
+      incrementConnectionCount();
+      connectedPairs.add(pairKey);
+
+      if (conn.isDefault && connectResult.connectionId) {
+        try {
+          await handleSetProperties({
+            diagramId,
+            elementId: sourceId,
+            properties: { default: connectResult.connectionId },
+          });
+        } catch (e: any) {
+          warnings.push(`Failed to set default flow on ${conn.from}: ${e.message}`);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`Failed to connect ${conn.from} → ${conn.to}: ${e.message}`);
+    }
+  }
 }
 
 // ── Connection deduction ───────────────────────────────────────────────────
@@ -241,12 +465,8 @@ export async function handleGenerateFromStructure(
   }
 
   // Assign IDs to elements that don't have them
-  let autoIdCounter = 0;
-  for (const el of args.elements) {
-    if (!el.id) {
-      el.id = `_gen_${autoIdCounter++}`;
-    }
-  }
+  const autoIdState: AutoIdState = { value: 0 };
+  assignGeneratedIds(args.elements, autoIdState);
 
   // Flatten children into main elements list (for sub-process support later)
   // For now, children are handled by creating elements inside the sub-process
@@ -285,23 +505,11 @@ export async function handleGenerateFromStructure(
         await handleCreateParticipant({
           diagramId,
           name: args.name,
-          wrapExisting: true,
           lanes: laneSpecs.length >= 2 ? laneSpecs : undefined,
         })
       );
       participantId = participantResult.participantId;
-
-      // Map lane names to actual IDs
-      if (participantResult.lanes) {
-        for (const lane of participantResult.lanes) {
-          // Find matching input lane by name
-          const inputLane = args.lanes.find(l => l.name === lane.name);
-          if (inputLane) {
-            laneIdMap[inputLane.id || inputLane.name] = lane.laneId;
-            lanesCreated++;
-          }
-        }
-      }
+      lanesCreated += mapLaneIdsByOrder(args.lanes, participantResult.laneIds, laneIdMap);
 
       // If fewer than 2 lanes were given to createParticipant, handle separately
       if (laneSpecs.length === 1) {
@@ -328,24 +536,22 @@ export async function handleGenerateFromStructure(
             participants: participantSpecs,
           })
         );
-        if (collabResult.participants) {
-          for (const p of collabResult.participants) {
-            const inputP = args.participants.find(ip => ip.name === p.name);
-            if (inputP) {
-              elementIdMap[inputP.id || inputP.name] = p.participantId;
-              // Map lanes if any
-              if (p.lanes && inputP.lanes) {
-                for (const lane of p.lanes) {
-                  const inputLane = inputP.lanes.find(l => l.name === lane.name);
-                  if (inputLane) {
-                    laneIdMap[inputLane.id || inputLane.name] = lane.laneId;
-                    lanesCreated++;
-                  }
-                }
-              }
-            }
+        if (collabResult.participantIds) {
+          for (let index = 0; index < args.participants.length; index++) {
+            const inputParticipant = args.participants[index];
+            const createdParticipantId = collabResult.participantIds[index];
+            if (!createdParticipantId) continue;
+
+            elementIdMap[inputParticipant.id || inputParticipant.name] = createdParticipantId;
+            lanesCreated += mapLaneIdsByOrder(
+              inputParticipant.lanes,
+              collabResult.lanesCreated?.[createdParticipantId],
+              laneIdMap
+            );
           }
-          participantId = collabResult.participants[0]?.participantId;
+          const firstExpandedIndex = args.participants.findIndex(p => p.collapsed !== true);
+          const selectedIndex = firstExpandedIndex >= 0 ? firstExpandedIndex : 0;
+          participantId = collabResult.participantIds[selectedIndex];
         }
       } else {
         // Single participant
@@ -359,308 +565,151 @@ export async function handleGenerateFromStructure(
             name: p.name,
             participantId: p.id,
             collapsed: p.collapsed,
-            wrapExisting: true,
             lanes: laneSpecs,
           })
         );
         participantId = pResult.participantId;
         elementIdMap[p.id || p.name] = pResult.participantId;
-
-        if (pResult.lanes && p.lanes) {
-          for (const lane of pResult.lanes) {
-            const inputLane = p.lanes.find(l => l.name === lane.name);
-            if (inputLane) {
-              laneIdMap[inputLane.id || inputLane.name] = lane.laneId;
-              lanesCreated++;
-            }
-          }
-        }
+        lanesCreated += mapLaneIdsByOrder(p.lanes, pResult.laneIds, laneIdMap);
       }
     }
 
     // ── Step 3: Topological sort of elements ────────────────────────────
-    const sortedElements = topologicalSort(args.elements);
+    const { sorted: sortedElements, cycleIds } = topologicalSort(args.elements);
+    if (cycleIds.length > 0) {
+      errors.push(
+        `Cyclic element dependencies detected in after/attachedTo references: ${cycleIds.join(', ')}`
+      );
+    }
 
     // ── Step 4: Create elements ─────────────────────────────────────────
     context?.sendProgress?.(2, undefined, 'Creating elements...');
 
-    // Track which elements we've created to determine `afterElementId`
-    const createdIds = new Set<string>();
+    const createElementsRecursively = async (
+      elements: ProcessElement[],
+      options: { participantId?: string; parentId?: string; scopeLabel?: string }
+    ): Promise<void> => {
+      const { sorted, cycleIds: nestedCycleIds } = topologicalSort(elements);
+      if (nestedCycleIds.length > 0) {
+        errors.push(
+          `Cyclic element dependencies detected${options.scopeLabel ? ` in ${options.scopeLabel}` : ''}: ${nestedCycleIds.join(', ')}`
+        );
+      }
 
-    for (let i = 0; i < sortedElements.length; i++) {
-      const el = sortedElements[i];
-      const bpmnType = resolveBpmnType(el.type);
+      for (const el of sorted) {
+        const bpmnType = resolveBpmnType(el.type);
 
-      try {
-        const addArgs: AddElementArgs = {
-          diagramId,
-          elementType: bpmnType,
-          name: el.name,
-          ...(participantId && !el.attachedTo ? { participantId } : {}),
-        };
+        try {
+          const addArgs: AddElementArgs = {
+            diagramId,
+            elementType: bpmnType,
+            name: el.name,
+          };
 
-        // Resolve lane assignment
-        if (el.lane) {
-          const resolvedLaneId = laneIdMap[el.lane] || el.lane;
-          addArgs.laneId = resolvedLaneId;
-        }
-
-        // Boundary event attachment
-        if (el.attachedTo) {
-          const hostId = elementIdMap[el.attachedTo] || el.attachedTo;
-          addArgs.hostElementId = hostId;
-          if (el.cancelActivity === false) {
-            addArgs.cancelActivity = false;
+          if (options.parentId) {
+            addArgs.parentId = options.parentId;
+          } else if (options.participantId && !el.attachedTo) {
+            addArgs.participantId = options.participantId;
           }
-        }
 
-        // Event definition shorthand
-        if (el.eventDefinition) {
-          addArgs.eventDefinitionType = resolveEventDefType(el.eventDefinition.type);
-          if (el.eventDefinition.errorRef) addArgs.errorRef = el.eventDefinition.errorRef;
-          if (el.eventDefinition.messageRef) addArgs.messageRef = el.eventDefinition.messageRef;
-          if (el.eventDefinition.signalRef) addArgs.signalRef = el.eventDefinition.signalRef;
-          if (el.eventDefinition.escalationRef) addArgs.escalationRef = el.eventDefinition.escalationRef;
-          if (el.eventDefinition.properties) {
-            addArgs.eventDefinitionProperties = el.eventDefinition.properties;
+          if (el.lane) {
+            addArgs.laneId = laneIdMap[el.lane] || el.lane;
           }
-        }
 
-        // Sub-process expansion & event sub-process flag
-        if (bpmnType === 'bpmn:SubProcess') {
-          addArgs.isExpanded = true;
-          if (el.type === 'eventSubProcess') {
-            // Mark as event sub-process via triggeredByEvent
-            // We'll set this after creation via setProperties
-          }
-        }
-
-        // Auto-connect to after element if it's already created
-        if (el.after && !el.attachedTo) {
-          const afterId = elementIdMap[el.after] || el.after;
-          if (createdIds.has(el.after)) {
-            addArgs.afterElementId = afterId;
-          }
-        }
-
-        const addResult = parseResultText(await handleAddElement(addArgs));
-        const createdId = addResult.elementId;
-        elementIdMap[el.id!] = createdId;
-        createdIds.add(el.id!);
-        elementsCreated++;
-
-        // Set documentation if provided
-        if (el.documentation) {
-          try {
-            await handleSetProperties({
-              diagramId,
-              elementId: createdId,
-              properties: { documentation: el.documentation },
-            });
-          } catch (e: any) {
-            warnings.push(`Failed to set documentation on ${el.id}: ${e.message}`);
-          }
-        }
-
-        // Set triggeredByEvent for eventSubProcess
-        if (el.type === 'eventSubProcess') {
-          try {
-            await handleSetProperties({
-              diagramId,
-              elementId: createdId,
-              properties: { triggeredByEvent: true },
-            });
-          } catch (e: any) {
-            warnings.push(`Failed to set triggeredByEvent on ${el.id}: ${e.message}`);
-          }
-        }
-
-        // Set event definition if not handled by shorthand and properties exist
-        if (el.eventDefinition && el.eventDefinition.properties && !addArgs.eventDefinitionType) {
-          try {
-            await handleSetEventDefinition({
-              diagramId,
-              elementId: createdId,
-              eventDefinitionType: resolveEventDefType(el.eventDefinition.type),
-              properties: el.eventDefinition.properties,
-              errorRef: el.eventDefinition.errorRef,
-              messageRef: el.eventDefinition.messageRef,
-              signalRef: el.eventDefinition.signalRef,
-              escalationRef: el.eventDefinition.escalationRef,
-            });
-          } catch (e: any) {
-            warnings.push(`Failed to set event definition on ${el.id}: ${e.message}`);
-          }
-        }
-
-        // Handle children for sub-processes (recursive element creation)
-        if (el.children && el.children.length > 0 && bpmnType === 'bpmn:SubProcess') {
-          for (const child of el.children) {
-            if (!child.id) child.id = `_gen_${autoIdCounter++}`;
-            try {
-              const childBpmnType = resolveBpmnType(child.type);
-              const childAddArgs: AddElementArgs = {
-                diagramId,
-                elementType: childBpmnType,
-                name: child.name,
-                parentId: createdId,
-              };
-              const childResult = parseResultText(await handleAddElement(childAddArgs));
-              elementIdMap[child.id] = childResult.elementId;
-              createdIds.add(child.id);
-              elementsCreated++;
-            } catch (e: any) {
-              errors.push(`Failed to create child element ${child.id} in sub-process ${el.id}: ${e.message}`);
+          if (el.attachedTo) {
+            addArgs.hostElementId = elementIdMap[el.attachedTo] || el.attachedTo;
+            if (el.cancelActivity === false) {
+              addArgs.cancelActivity = false;
             }
           }
+
+          if (el.eventDefinition) {
+            addArgs.eventDefinitionType = resolveEventDefType(el.eventDefinition.type);
+            if (el.eventDefinition.errorRef) addArgs.errorRef = el.eventDefinition.errorRef;
+            if (el.eventDefinition.messageRef) addArgs.messageRef = el.eventDefinition.messageRef;
+            if (el.eventDefinition.signalRef) addArgs.signalRef = el.eventDefinition.signalRef;
+            if (el.eventDefinition.escalationRef) addArgs.escalationRef = el.eventDefinition.escalationRef;
+            if (el.eventDefinition.properties) {
+              addArgs.eventDefinitionProperties = el.eventDefinition.properties;
+            }
+          }
+
+          if (bpmnType === 'bpmn:SubProcess') {
+            addArgs.isExpanded = true;
+          }
+
+          if (el.after && !el.attachedTo && elementIdMap[el.after]) {
+            addArgs.afterElementId = elementIdMap[el.after];
+          }
+
+          const addResult = parseResultText(await handleAddElement(addArgs));
+          const createdId = addResult.elementId;
+          elementIdMap[el.id!] = createdId;
+          elementsCreated++;
+
+          if (el.documentation) {
+            try {
+              await handleSetProperties({
+                diagramId,
+                elementId: createdId,
+                properties: { documentation: el.documentation },
+              });
+            } catch (e: any) {
+              warnings.push(`Failed to set documentation on ${el.id}: ${e.message}`);
+            }
+          }
+
+          if (el.type === 'eventSubProcess') {
+            try {
+              await handleSetProperties({
+                diagramId,
+                elementId: createdId,
+                properties: { triggeredByEvent: true },
+              });
+            } catch (e: any) {
+              warnings.push(`Failed to set triggeredByEvent on ${el.id}: ${e.message}`);
+            }
+          }
+
+          if (el.children && el.children.length > 0 && bpmnType === 'bpmn:SubProcess') {
+            await createElementsRecursively(el.children, {
+              parentId: createdId,
+              scopeLabel: `sub-process ${el.id}`,
+            });
+            await createScopedConnections(
+              diagramId,
+              el.children,
+              el.connections,
+              elementIdMap,
+              warnings,
+              errors,
+              () => {
+                connectionsCreated++;
+              }
+            );
+          }
+        } catch (e: any) {
+          errors.push(`Failed to create element ${el.id} (${el.type}): ${e.message}`);
         }
-      } catch (e: any) {
-        errors.push(`Failed to create element ${el.id} (${el.type}): ${e.message}`);
       }
-    }
+    };
+
+    await createElementsRecursively(sortedElements, { participantId });
 
     // ── Step 5: Create connections ──────────────────────────────────────
     context?.sendProgress?.(3, undefined, 'Creating connections...');
 
-    // Deduce sequential connections from element order
-    const autoConnections = deduceSequentialConnections(args.elements);
-
-    // Build a set of explicitly connected pairs to avoid duplicates
-    const explicitPairs = new Set<string>();
-    if (args.connections) {
-      for (const conn of args.connections) {
-        explicitPairs.add(`${conn.from}→${conn.to}`);
-      }
-    }
-
-    // Also track all connected pairs to avoid creating afterElementId connections
-    // that were already established during element creation
-    const connectedPairs = new Set<string>();
-
-    // Process deduced sequential connections (skip if explicit connection exists)
-    for (const conn of autoConnections) {
-      const pairKey = `${conn.from}→${conn.to}`;
-      if (explicitPairs.has(pairKey)) continue;
-      if (connectedPairs.has(pairKey)) continue;
-
-      const sourceId = elementIdMap[conn.from];
-      const targetId = elementIdMap[conn.to];
-      if (!sourceId || !targetId) continue;
-
-      // Check if this connection was already auto-created by afterElementId
-      const diagram = requireDiagram(diagramId);
-      const registry = getService(diagram.modeler, 'elementRegistry');
-      const sourceEl = registry.get(sourceId);
-      if (sourceEl) {
-        const existingOutgoing = (sourceEl.outgoing || []) as any[];
-        const alreadyConnected = existingOutgoing.some(
-          (c: any) => c.target?.id === targetId
-        );
-        if (alreadyConnected) {
-          connectedPairs.add(pairKey);
-          continue;
-        }
-      }
-
-      try {
-        await handleConnect({
-          diagramId,
-          sourceElementId: sourceId,
-          targetElementId: targetId,
-          label: conn.label,
-        });
+    await createScopedConnections(
+      diagramId,
+      args.elements,
+      args.connections,
+      elementIdMap,
+      warnings,
+      errors,
+      () => {
         connectionsCreated++;
-        connectedPairs.add(pairKey);
-      } catch (e: any) {
-        warnings.push(`Failed to auto-connect ${conn.from} → ${conn.to}: ${e.message}`);
       }
-    }
-
-    // Process explicit connections
-    if (args.connections) {
-      for (const conn of args.connections) {
-        const pairKey = `${conn.from}→${conn.to}`;
-        if (connectedPairs.has(pairKey)) {
-          // Connection already exists — apply properties to it if needed
-          if (conn.condition || conn.isDefault || conn.label) {
-            const sourceId = elementIdMap[conn.from];
-            const targetId = elementIdMap[conn.to];
-            if (sourceId && targetId) {
-              try {
-                const diagram = requireDiagram(diagramId);
-                const registry = getService(diagram.modeler, 'elementRegistry');
-                const sourceEl = registry.get(sourceId);
-                const existingConn = (sourceEl?.outgoing || []).find(
-                  (c: any) => c.target?.id === targetId
-                );
-                if (existingConn) {
-                  const props: Record<string, any> = {};
-                  if (conn.label) props.name = conn.label;
-                  if (conn.condition) props.conditionExpression = conn.condition;
-                  await handleSetProperties({
-                    diagramId,
-                    elementId: existingConn.id,
-                    properties: props,
-                  });
-                  if (conn.isDefault) {
-                    // Set as default flow on the source gateway
-                    await handleSetProperties({
-                      diagramId,
-                      elementId: sourceId,
-                      properties: { default: existingConn.id },
-                    });
-                  }
-                }
-              } catch (e: any) {
-                warnings.push(`Failed to update connection properties ${conn.from} → ${conn.to}: ${e.message}`);
-              }
-            }
-          }
-          continue;
-        }
-
-        const sourceId = elementIdMap[conn.from];
-        const targetId = elementIdMap[conn.to];
-        if (!sourceId || !targetId) {
-          errors.push(
-            `Connection ${conn.from} → ${conn.to}: ` +
-            `${!sourceId ? `source "${conn.from}" not found` : ''}` +
-            `${!sourceId && !targetId ? ', ' : ''}` +
-            `${!targetId ? `target "${conn.to}" not found` : ''}`
-          );
-          continue;
-        }
-
-        try {
-          const connectResult = parseResultText(
-            await handleConnect({
-              diagramId,
-              sourceElementId: sourceId,
-              targetElementId: targetId,
-              label: conn.label,
-              conditionExpression: conn.condition,
-            })
-          );
-          connectionsCreated++;
-          connectedPairs.add(pairKey);
-
-          // Set default flow after connection is created
-          if (conn.isDefault && connectResult.connectionId) {
-            try {
-              await handleSetProperties({
-                diagramId,
-                elementId: sourceId,
-                properties: { default: connectResult.connectionId },
-              });
-            } catch (e: any) {
-              warnings.push(`Failed to set default flow on ${conn.from}: ${e.message}`);
-            }
-          }
-        } catch (e: any) {
-          errors.push(`Failed to connect ${conn.from} → ${conn.to}: ${e.message}`);
-        }
-      }
-    }
+    );
 
     // ── Step 6: Assign elements to lanes ────────────────────────────────
     if (hasLanes) {
@@ -824,6 +873,29 @@ export const TOOL_DEFINITION = {
               type: 'array',
               description: 'Child elements for expanded sub-processes',
               items: { type: 'object' },
+            },
+            connections: {
+              type: 'array',
+              description:
+                'For subProcess or eventSubProcess: explicit internal connections between child elements. ' +
+                'Uses the same shape as top-level connections and is applied after all children are created.',
+              items: {
+                type: 'object',
+                properties: {
+                  from: { type: 'string', description: 'Source child element ID' },
+                  to: { type: 'string', description: 'Target child element ID' },
+                  label: { type: 'string', description: 'Connection label' },
+                  condition: {
+                    type: 'string',
+                    description: 'Condition expression for gateway outgoing flows',
+                  },
+                  isDefault: {
+                    type: 'boolean',
+                    description: 'Is this the default flow from a gateway?',
+                  },
+                },
+                required: ['from', 'to'],
+              },
             },
           },
           required: ['type'],

@@ -1,12 +1,6 @@
 /**
- * Handler for handoff_bpmn_to_lane tool.
- *
- * Creates a clean cross-lane (or cross-pool) handoff by:
- * 1. Creating a new element in the target lane
- * 2. Connecting the source element to the new element
- *
- * This reduces the multi-step pattern of:
- *   add_bpmn_element → assign_bpmn_elements_to_lane → connect_bpmn_elements
+ * Legacy standalone handoff helper retained for internal reuse.
+ * External callers should use add_bpmn_element with fromElementId + toLaneId.
  */
 // @mutating
 
@@ -172,13 +166,10 @@ export async function handleHandoffToLane(args: HandoffToLaneArgs): Promise<Tool
 }
 
 export const TOOL_DEFINITION = {
-  name: 'handoff_bpmn_to_lane',
+  name: '__legacy_internal_lane_handoff',
   description:
-    'Create a clean cross-lane handoff by adding a new element in a target lane and connecting it ' +
-    'from a source element. Automatically detects whether to use SequenceFlow (same pool) or ' +
-    'MessageFlow (cross-pool). Reduces the multi-step pattern of add_bpmn_element + ' +
-    'assign_bpmn_elements_to_lane + connect_bpmn_elements into a single call. ' +
-    'Useful when modeling work handoffs between roles/departments represented as lanes.',
+    'Legacy standalone handoff schema retained for internal reference. ' +
+    'External callers should use add_bpmn_element with fromElementId + toLaneId.',
   inputSchema: {
     type: 'object',
     properties: {

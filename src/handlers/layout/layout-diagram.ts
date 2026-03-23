@@ -33,6 +33,7 @@ import { expandCollapsedSubprocesses } from './expand-subprocesses';
 import { rebuildLayout, applyAllBackEdgeUShapes } from '../../rebuild';
 import { straightenNonOrthogonalFlows } from '../../rebuild/waypoints';
 import { stackPools } from '../../rebuild/container-layout';
+import { handleAlignElements, handleDistributeElements } from './align-elements';
 import {
   generateDiagramId,
   storeDiagram,
@@ -151,6 +152,8 @@ function recomputeStaleAssociationWaypoints(
 
 export interface LayoutDiagramArgs {
   diagramId: string;
+  /** Optional layout sub-mode for alignment, distribution, labels, or autosize-only behavior. */
+  mode?: 'layout' | 'align' | 'distribute' | 'labels' | 'autosize';
   /** Optional ID of a Participant or SubProcess to layout in isolation. */
   scopeElementId?: string;
   /** Pixel grid snap: snap element positions to the nearest multiple of this value. */
@@ -175,12 +178,21 @@ export interface LayoutDiagramArgs {
   labelsOnly?: boolean;
   /**
    * When true, only resize pools and lanes to fit their contents without running full layout.
-   * Equivalent to the former autosize_bpmn_pools_and_lanes tool.
    * Accepts participantId to scope resizing to a single pool.
    */
   autosizeOnly?: boolean;
   /** When autosizeOnly is true, scope pool resizing to this participant ID. */
   participantId?: string;
+  /** Element IDs for mode=align or mode=distribute. */
+  elementIds?: string[];
+  /** Alignment target for mode=align. */
+  alignment?: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
+  /** Compact redistribution flag for mode=align. */
+  compact?: boolean;
+  /** Distribution orientation for mode=distribute. */
+  orientation?: 'horizontal' | 'vertical';
+  /** Fixed gap for mode=distribute. */
+  gap?: number;
   /**
    * When false, disable the post-layout pass that replaces non-orthogonal
    * (Z-shaped or diagonal) forward sequence-flow waypoints with clean
@@ -315,7 +327,7 @@ function buildNextSteps(
         tool: 'layout_bpmn_diagram',
         description:
           `Flow orthogonality is ${pct}% (below 90%). Re-run layout_bpmn_diagram to attempt ` +
-          `improvement, or run validate_bpmn_diagram to identify specific non-orthogonal segments.`,
+          `improvement, or run inspect_bpmn with mode: "validation" to identify specific non-orthogonal segments.`,
       });
     }
   }
@@ -330,7 +342,7 @@ function buildNextSteps(
 
     if (mostlyGateway) {
       steps.push({
-        tool: 'analyze_bpmn_lanes',
+        tool: 'manage_bpmn_lanes',
         description:
           `Lane coherence score is ${laneCrossingMetrics.laneCoherenceScore}% — ` +
           `but ${gw}/${crossings} crossing flow(s) originate from gateway fan-out, which is ` +
@@ -339,12 +351,12 @@ function buildNextSteps(
       });
     } else {
       steps.push({
-        tool: 'analyze_bpmn_lanes',
-        description: `Lane coherence score is ${laneCrossingMetrics.laneCoherenceScore}% (below 70%). Run analyze_bpmn_lanes with mode: 'validate' for detailed lane improvement suggestions.`,
+        tool: 'manage_bpmn_lanes',
+        description: `Lane coherence score is ${laneCrossingMetrics.laneCoherenceScore}% (below 70%). Run manage_bpmn_lanes with mode: 'validate' for detailed lane improvement suggestions.`,
       });
       steps.push({
-        tool: 'redistribute_bpmn_elements_across_lanes',
-        description: `Lane coherence is low (${laneCrossingMetrics.laneCoherenceScore}%). Run redistribute_bpmn_elements_across_lanes with validate: true to automatically minimize cross-lane flows.`,
+        tool: 'manage_bpmn_lanes',
+        description: `Lane coherence is low (${laneCrossingMetrics.laneCoherenceScore}%). Run manage_bpmn_lanes with mode: 'redistribute' and validate: true to automatically minimize cross-lane flows.`,
       });
     }
   }
@@ -352,13 +364,13 @@ function buildNextSteps(
   const poolIssues = sizingIssues.filter((i) => i.severity === 'warning');
   if (poolIssues.length > 0 && !poolExpansionApplied) {
     steps.push({
-      tool: 'autosize_bpmn_pools_and_lanes',
+      tool: 'layout_bpmn_diagram',
       description:
         `${poolIssues.length} pool(s) need resizing: ` +
         poolIssues
           .map((i) => `${i.containerName} → ${i.recommendedWidth}×${i.recommendedHeight}px`)
           .join(', ') +
-        '. Run autosize_bpmn_pools_and_lanes to fix automatically, or use move_bpmn_element with width/height for manual control.',
+        '. Run layout_bpmn_diagram with autosizeOnly: true to fix automatically, or use move_bpmn_element with width/height for manual control.',
     });
   }
 
@@ -404,14 +416,14 @@ function buildOrthogonalityWarning(
   return (
     `Layout produced ${qualityMetrics.orthogonalFlowPercent}% orthogonal flows ` +
     `(${qualityMetrics.avgBendCount} avg bends/flow). ` +
-    `Re-run layout_bpmn_diagram or run validate_bpmn_diagram to identify non-orthogonal segments.` +
+    `Re-run layout_bpmn_diagram or run inspect_bpmn with mode: "validation" to identify non-orthogonal segments.` +
     (ids && ids.length > 0 ? ` Non-orthogonal flow IDs: [${ids.join(', ')}].` : '')
   );
 }
 
 /**
  * For each non-orthogonal flow whose source is a gateway, compute concrete
- * set_bpmn_connection_waypoints fix hints with 2-point straight waypoints.
+ * connect_bpmn_elements fix hints with connectionId + 2-point straight waypoints.
  *
  * Returns an array of fix objects (empty when no gateway-sourced non-orthogonal flows exist).
  */
@@ -436,7 +448,7 @@ function buildGatewayFlowFixes(
 
     fixes.push({
       flowId,
-      tool: 'set_bpmn_connection_waypoints',
+      tool: 'connect_bpmn_elements',
       args: {
         diagramId,
         connectionId: flowId,
@@ -535,7 +547,7 @@ function buildLayoutResponse(opts: {
   } = opts;
 
   const scopeNote = scopeElementId
-    ? 'Message flows crossing the scope boundary were not re-routed. Run a full layout (without scopeElementId) or use set_bpmn_connection_waypoints to fix any displaced message flow waypoints.'
+    ? 'Message flows crossing the scope boundary were not re-routed. Run a full layout (without scopeElementId) or use connect_bpmn_elements with connectionId + waypoints to fix any displaced message flow waypoints.'
     : undefined;
 
   return jsonResult({
@@ -653,6 +665,32 @@ export async function handleLayoutDiagram(
   args: LayoutDiagramArgs,
   context?: ToolContext
 ): Promise<ToolResult> {
+  if (args.mode === 'align' || args.alignment) {
+    return handleAlignElements({
+      diagramId: args.diagramId,
+      elementIds: args.elementIds || [],
+      alignment: args.alignment!,
+      compact: args.compact,
+    });
+  }
+
+  if (args.mode === 'distribute' || args.orientation) {
+    return handleDistributeElements({
+      diagramId: args.diagramId,
+      elementIds: args.elementIds || [],
+      orientation: args.orientation!,
+      gap: args.gap,
+    });
+  }
+
+  if (args.mode === 'autosize') {
+    args = { ...args, autosizeOnly: true };
+  }
+
+  if (args.mode === 'labels') {
+    args = { ...args, labelsOnly: true };
+  }
+
   if (args.autosizeOnly) {
     // Delegate to autosize handler, passing optional participantId
     const autosizeArgs: any = { diagramId: args.diagramId };

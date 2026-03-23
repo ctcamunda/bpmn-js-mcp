@@ -49,7 +49,8 @@ export const ALLOWED_ELEMENT_TYPES = [
 ] as const;
 
 /**
- * Subset of element types accepted by insert_bpmn_element (no artifacts, pools, or lanes).
+ * Subset of element types accepted by the legacy internal flow-insertion helper
+ * (no artifacts, pools, or lanes).
  */
 export const INSERTABLE_ELEMENT_TYPES = [
   'bpmn:Task',

@@ -1,7 +1,7 @@
 /**
  * Tests for layout_bpmn_diagram tool-feedback improvements:
  * - When nonOrthogonalFlowIds includes gateway-sourced flows, the response
- *   should include concrete set_bpmn_connection_waypoints fix hints.
+ *   should include concrete connect_bpmn_elements waypoint fix hints.
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';
@@ -44,7 +44,7 @@ describe('layout_bpmn_diagram gateway flow fix hints', () => {
 
       for (const fix of fixes) {
         expect(fix).toHaveProperty('flowId');
-        expect(fix).toHaveProperty('tool', 'set_bpmn_connection_waypoints');
+        expect(fix).toHaveProperty('tool', 'connect_bpmn_elements');
         expect(fix).toHaveProperty('args');
         expect(fix.args).toHaveProperty('connectionId');
         expect(fix.args).toHaveProperty('waypoints');

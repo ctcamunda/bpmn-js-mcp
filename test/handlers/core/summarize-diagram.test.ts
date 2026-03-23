@@ -73,6 +73,6 @@ describe('summarize_bpmn_diagram', () => {
     const summary = parseResult(await handleSummarizeDiagram({ diagramId }));
     expect(summary.structureRecommendation).toBeDefined();
     expect(summary.structureRecommendation).toContain('assignees');
-    expect(summary.structureRecommendation).toContain('analyze_bpmn_lanes');
+    expect(summary.structureRecommendation).toContain('manage_bpmn_lanes');
   });
 });

@@ -3,7 +3,7 @@
  *
  * Creates participant(s) (pools) in a diagram. Supports both single-pool
  * creation (via `name`) and multi-pool collaboration creation (via
- * `participants` array, merged from the former create_bpmn_collaboration tool).
+ * `participants` array).
  *
  * If the diagram is a plain process, it is first wrapped in a collaboration.
  */
@@ -64,7 +64,7 @@ export interface CreateParticipantArgs {
   }>;
   /**
    * When true, wraps the existing process into a participant pool instead of
-   * creating an empty participant. Equivalent to the former wrap_bpmn_process_in_collaboration tool.
+    * creating an empty participant.
    */
   wrapExisting?: boolean;
   /** Optional additional collapsed (partner) pools when wrapExisting is true. */

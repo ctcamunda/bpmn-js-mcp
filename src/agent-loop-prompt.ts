@@ -159,7 +159,7 @@ function promptTools(): string[] {
     '',
     'Use these to inspect diagrams:',
     '1. import_bpmn_xml(filePath) — load a .bpmn file',
-    '2. list_bpmn_elements(diagramId) — see positions and waypoints',
+    '2. inspect_bpmn(mode:"elements", diagramId) — see positions and waypoints',
     '3. layout_bpmn_diagram(diagramId) — run layout engine',
     '4. export_bpmn(diagramId, format:"svg", filePath) — visual export',
     '',

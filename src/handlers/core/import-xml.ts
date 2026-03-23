@@ -158,12 +158,14 @@ export async function handleImportXml(
     message: `Imported BPMN diagram with ID: ${diagramId}${shouldLayout ? ' (auto-layout applied)' : ''}${filePath ? ` from ${filePath}` : ''}`,
     nextSteps: [
       {
-        tool: 'list_bpmn_elements',
-        description: 'List all elements in the imported diagram to understand its structure.',
+        tool: 'inspect_bpmn',
+        description:
+          'Run inspect_bpmn with mode: "elements" to understand the imported diagram structure.',
       },
       {
-        tool: 'validate_bpmn_diagram',
-        description: 'Validate the imported diagram for lint issues and best practices.',
+        tool: 'inspect_bpmn',
+        description:
+          'Run inspect_bpmn with mode: "validation" to check the imported diagram for lint issues and best practices.',
       },
       {
         tool: 'layout_bpmn_diagram',

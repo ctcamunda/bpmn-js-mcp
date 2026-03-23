@@ -28,7 +28,7 @@
 
 **Pools** (participants) represent independent process boundaries — separate organizations, departments, or systems that communicate via **message flows**.
 
-- In Camunda 7 / Operaton, **only one pool is executable** — additional pools should be **collapsed** (thin bars) to document external message endpoints.
+- For executable Camunda 8 / Zeebe models, **only one pool should be executable** — additional pools should be **collapsed** (thin bars) to document external message endpoints.
 - Use pools when participants have their own process lifecycle and communicate asynchronously.
 - Sequence flows **cannot cross pool boundaries** — use message flows between pools.
 
@@ -77,7 +77,7 @@
   - Model business-relevant exception paths.
   - Avoid encoding “purely technical retries” in BPMN (see “Operational notes” below).
 - **Use receive tasks + boundary events for executable waiting**
-  - For Operaton/Camunda 7, prefer a **receive task** (or other stable wait state) with boundary timers/messages when you need to stay “ready to receive”.
+  - For executable Camunda 8 / Zeebe models, prefer a **receive task** (or other stable wait state) with boundary timers/messages when you need to stay “ready to receive”.
   - This avoids “not ready to receive” gaps that can happen in some event-based-gateway patterns.
 - **Multi-phase escalation**
   - Prefer patterns that keep the instance continuously in a wait state (e.g., receive task + non-interrupting reminder timer + interrupting timeout).
@@ -97,7 +97,7 @@
 ## Situation patterns (reusable modeling solutions)
 
 - **Multi-step escalation (remind → remind → cancel)**
-  - For executable Operaton models, favor **receive task + boundary timers** over event-based-gateway loops.
+  - For executable Camunda 8 models, favor **receive task + boundary timers** over event-based-gateway loops.
 - **Four-eyes principle (two approvers)**
   - Separate tasks (explicit, readable) vs loop (compact) vs multi-instance (parallel speed).
   - Enforce “different approvers” via engine constraints (assignment rules, candidate groups, or custom checks).
@@ -133,23 +133,20 @@
   - **Collect + Sum**: scoring models (“soft criteria”).
 - Avoid accidental overlap: if rules can overlap, make it explicit via the hit policy and add tests.
 - Prefer a final “else”/catch-all rule when you need completeness.
-- Verify which hit policies your Operaton/DMN engine version supports and lock behavior with automated tests.
+- Verify which hit policies your Camunda 8 / DMN runtime version supports and lock behavior with automated tests.
 
-## Version binding for called resources (Camunda 7 / Operaton adaptation)
+## Version binding for called resources (Camunda 8 adaptation)
 
-Camunda 7 already provides binding concepts for called processes/decisions.
+Camunda 8 uses deployment/versioning semantics that do not rely on legacy runtime binding flags.
 
-- **Call Activity (BPMN)**: use `camunda:calledElementBinding`:
-  - `latest`: resolves the newest deployed definition by key at activation time (fast iteration; riskier in prod).
-  - `deployment`: resolves a definition deployed together with the calling process (predictable behavior).
-  - `version`: pin to a specific version (requires managing version numbers explicitly).
-- **Business Rule Task (DMN)**: use `camunda:decisionRefBinding` with similar options (`latest` / `deployment` / `version`).
-- Recommended default for production stability: prefer **`deployment`** (or a pinned version) for shared dependencies; use `latest` mainly for development or when you can guarantee backward compatibility.
+- **Call Activity (BPMN)**: model the called process with `zeebe:CalledElement` and a stable `processId`.
+- **Business Rule Task (DMN)**: model the called decision with `zeebe:CalledDecision` and a stable `decisionId`.
+- For production stability, prefer stable process and decision identifiers plus controlled deployment pipelines rather than assuming runtime binding flags such as `latest` or `deployment`.
 
 ## Operational notes (engine-friendly modeling)
 
 - Avoid modeling “retry loops” in BPMN for technical failures.
-  - In Operaton, prefer engine-level mechanisms (job retries/incidents) and worker-side retry/backoff for external tasks.
+  - In Camunda 8, prefer engine-level mechanisms (job retries/incidents) and worker-side retry/backoff for service-task workers.
   - Keep BPMN focused on business-level exception handling.
 
 ## Loopback / review-and-rework patterns
@@ -168,8 +165,8 @@ A common pattern is **Task → Review → Gateway → (Yes: continue) / (No: loo
 
 - Keep the **happy path** (Yes branch) straight and horizontal — it should flow left-to-right without vertical detours.
 - Route the **loopback** (No branch) **below** the main path with a clean U-shape: down → left → up. This keeps the loopback visually distinct.
-- Use `set_bpmn_connection_waypoints` to manually set clean U-shaped waypoints when the auto-router creates zigzag paths.
-- When inserting a gateway into an existing straight flow, use `insert_bpmn_element` — it preserves horizontal alignment between source, gateway, and target.
+- Use `connect_bpmn_elements` with `connectionId` + `waypoints` to manually set clean U-shaped waypoints when the auto-router creates zigzag paths.
+- When inserting a gateway into an existing straight flow, use `add_bpmn_element` with `flowId` — it preserves horizontal alignment between source, gateway, and target.
 
 **Modeling tips:**
 
@@ -195,7 +192,7 @@ A common pattern is **Task → Review → Gateway → (Yes: continue) / (No: loo
 **Sizing workflow:**
 
 1. Build the process flow first (tasks, gateways, events, connections).
-2. Wrap in a collaboration (`wrap_bpmn_process_in_collaboration`) with a generous participant width (e.g., 1500px).
+2. Wrap in a collaboration using `create_bpmn_participant` with `wrapExisting: true` and a generous participant width (e.g., 1500px).
 3. Create lanes (`create_bpmn_lanes`) and assign elements.
 4. Run `layout_bpmn_diagram` — this positions elements within lanes.
 5. If elements overflow, resize the participant with `move_bpmn_element` (set `width`/`height`).
@@ -217,9 +214,9 @@ A common pattern is **Task → Review → Gateway → (Yes: continue) / (No: loo
 
 **Layout produces zigzag cross-lane flows:**
 
-- Check `validate_bpmn_lane_organization` — it reports a lane coherence score and suggests element re-assignments.
+- Check `analyze_bpmn_lanes` with `mode: "validate"` — it reports a lane coherence score and suggests element re-assignments.
 - Move tasks that cause excessive lane crossings into the same lane as their neighbours.
-- Run `suggest_bpmn_lane_organization` for AI-assisted lane assignment recommendations.
+- Run `analyze_bpmn_lanes` with `mode: "suggest"` for AI-assisted lane assignment recommendations.
 - Consider whether lanes are the right structure — if roles interleave heavily, a flat process (no lanes) may be clearer.
 
 **Duplicate DI shapes or missing shapes after modifications:**
@@ -230,6 +227,6 @@ A common pattern is **Task → Review → Gateway → (Yes: continue) / (No: loo
 
 **Inserted element lands in the wrong lane:**
 
-- When `insert_bpmn_element` splits a cross-lane flow, the new element is placed at the midpoint between source and target, which may fall into an unrelated lane.
+- When `add_bpmn_element` with `flowId` splits a cross-lane flow, the new element is placed at the midpoint between source and target, which may fall into an unrelated lane.
 - After insertion, use `assign_bpmn_elements_to_lane` to move the element to the correct lane.
 - Alternatively, use `add_bpmn_element` with explicit `x`/`y` coordinates followed by manual connection.

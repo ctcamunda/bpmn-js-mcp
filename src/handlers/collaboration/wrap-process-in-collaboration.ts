@@ -1,10 +1,6 @@
 /**
- * Handler for wrap_bpmn_process_in_collaboration tool.
- *
- * Migrates an existing process into a collaboration by wrapping it inside
- * a participant pool — without duplicating flow nodes.  This solves the
- * common failure mode where agents re-add elements when trying to create
- * a collaboration from an existing process.
+ * Legacy standalone process-wrapping helper retained for internal reuse.
+ * External callers should use create_bpmn_participant with wrapExisting: true.
  */
 // @mutating
 
@@ -278,13 +274,10 @@ export async function handleWrapProcessInCollaboration(
 }
 
 export const TOOL_DEFINITION = {
-  name: 'wrap_bpmn_process_in_collaboration',
+  name: '__legacy_internal_wrap_existing_process',
   description:
-    'Migrate an existing process into a collaboration by wrapping it in a participant pool. ' +
-    'This preserves all existing flow nodes and connections — no elements are duplicated. ' +
-    'Optionally adds collapsed partner pools for message flow documentation. ' +
-    'Use this instead of manually creating a collaboration when you already have a process ' +
-    'with tasks and flows. The diagram must not already contain participants.',
+    'Legacy standalone wrapping schema retained for internal reference. ' +
+    'External callers should use create_bpmn_participant with wrapExisting: true.',
   inputSchema: {
     type: 'object',
     properties: {

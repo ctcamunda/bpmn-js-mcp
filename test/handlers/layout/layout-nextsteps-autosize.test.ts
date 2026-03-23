@@ -1,6 +1,6 @@
 /**
  * Tests that layout_bpmn_diagram nextSteps correctly references
- * `autosize_bpmn_pools_and_lanes` (not `layout_bpmn_diagram`) when a pool
+ * `layout_bpmn_diagram` with `autosizeOnly: true` when a pool
  * has sizing issues and pool auto-expansion was not applied.
  */
 import { describe, test, expect, beforeEach } from 'vitest';
@@ -10,7 +10,7 @@ import { createDiagram, addElement, connect, parseResult, clearDiagrams } from '
 describe('layout_bpmn_diagram — autosize nextSteps tool name', () => {
   beforeEach(() => clearDiagrams());
 
-  test('nextSteps references autosize_bpmn_pools_and_lanes when pool is undersized', async () => {
+  test('nextSteps references layout_bpmn_diagram when pool is undersized', async () => {
     const diagramId = await createDiagram();
 
     const poolRes = parseResult(
@@ -53,23 +53,14 @@ describe('layout_bpmn_diagram — autosize nextSteps tool name', () => {
     expect(layoutRes.success).toBe(true);
 
     // When pool sizing issues exist and autosize wasn't applied, nextSteps
-    // must reference autosize_bpmn_pools_and_lanes — NOT layout_bpmn_diagram
+    // must reference layout_bpmn_diagram with autosize guidance.
     const steps = (layoutRes.nextSteps ?? []) as Array<{ tool: string; description: string }>;
     const poolStep = steps.find(
       (s) => s.description && s.description.toLowerCase().includes('autosize')
     );
     if (poolStep) {
-      expect(poolStep.tool).toBe('autosize_bpmn_pools_and_lanes');
-      expect(poolStep.tool).not.toBe('layout_bpmn_diagram');
+      expect(poolStep.tool).toBe('layout_bpmn_diagram');
+      expect(poolStep.description).toContain('autosizeOnly: true');
     }
-    // If no pool sizing issue was detected (pool already fits), at minimum
-    // the nextSteps must not incorrectly name layout_bpmn_diagram for autosize
-    const wrongToolStep = steps.find(
-      (s) =>
-        s.tool === 'layout_bpmn_diagram' &&
-        s.description &&
-        s.description.toLowerCase().includes('autosize')
-    );
-    expect(wrongToolStep).toBeUndefined();
   });
 });

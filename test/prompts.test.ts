@@ -98,11 +98,47 @@ describe('getPrompt', () => {
     }
   });
 
+  test('prompts do not reference removed waypoint or autosize tools', () => {
+    for (const name of ['executable', 'executable-pool', 'collaboration']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      expect(text).not.toContain('set_bpmn_connection_waypoints');
+      expect(text).not.toContain('autosize_bpmn_pools_and_lanes');
+    }
+  });
+
+  test('executable-pool prompt does not contain NaN from malformed concatenation', () => {
+    const result = getPrompt('executable-pool');
+    expect(result.messages[0].content.text).not.toContain('NaN');
+  });
+
   test('executable prompt describes Zeebe service task configuration', () => {
     const result = getPrompt('executable');
     const text = result.messages[0].content.text;
     // Guidance for Zeebe job worker type configuration
     expect(text).toMatch(/zeebe:type/i);
+  });
+
+  test('executable prompts position specialized tools as primary and batch Zeebe config as optional', () => {
+    for (const name of ['executable', 'executable-pool']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      expect(text).toMatch(/specialized property tools.*authoritative|authoritative.*specialized/i);
+      expect(text).toContain('configure_bpmn_zeebe_extensions');
+      expect(text).toMatch(/optional batch shortcut/i);
+      expect(text).toMatch(/does NOT replace|Do not treat it as a replacement/i);
+    }
+  });
+
+  test('executable prompts prefer generate_bpmn_from_structure for first-pass construction when the workflow is already well specified', () => {
+    for (const name of ['executable', 'executable-pool']) {
+      const result = getPrompt(name);
+      const text = result.messages[0].content.text;
+      expect(text).toContain('generate_bpmn_from_structure');
+      expect(text).toMatch(/reasonably complete process description|already fairly complete/i);
+      expect(text).toMatch(/initial BPMN skeleton|first-pass construction/i);
+      expect(text).toMatch(/incremental edit|geometry-sensitive refinement|manual modeling|pool\/lane geometry cleanup/i);
+    }
   });
 
   test('executable prompt warns about afterElementId when using add_bpmn_element_chain', () => {

@@ -81,7 +81,7 @@ export const FIX_SUGGESTIONS: Record<string, string> = {
   'bpmn-mcp/lane-missing-start-or-end':
     'Assign start and end events to appropriate lanes using move_bpmn_element with laneId',
   'bpmn-mcp/pool-size-insufficient':
-    'Use autosize_bpmn_pools_and_lanes with participantId to auto-resize the pool{elementRef}, or use move_bpmn_element with width/height to manually resize',
+    'Use layout_bpmn_diagram with autosizeOnly: true and participantId to auto-resize the pool{elementRef}, or use move_bpmn_element with width/height to manually resize',
   'bpmn-mcp/subprocess-expansion-issue':
     'Use move_bpmn_element with width/height to resize the subprocess{elementRef}, or run layout_bpmn_diagram to re-arrange elements',
   'bpmn-mcp/lane-overcrowding':
@@ -89,7 +89,7 @@ export const FIX_SUGGESTIONS: Record<string, string> = {
   'bpmn-mcp/role-mismatch-with-lane':
     'Use set_bpmn_element_properties to update zeebe:assignee or zeebe:candidateGroups to match the lane role, or move the element to the correct lane with move_bpmn_element{elementRef}',
   'bpmn-mcp/inconsistent-assignee-grouping':
-    'Group elements with the same assignee/candidateGroups into a single lane using redistribute_bpmn_elements_across_lanes (strategy: manual) or move_bpmn_element with laneId',
+    "Group elements with the same assignee/candidateGroups into a single lane using manage_bpmn_lanes with mode: 'redistribute' and strategy: 'manual', or move_bpmn_element with laneId",
   'bpmn-mcp/service-task-missing-implementation':
     'Use set_bpmn_element_properties to set zeebe:type via zeebe:TaskDefinition (job type for Zeebe workers){elementRef}',
   'bpmn-mcp/timer-missing-definition':
@@ -105,13 +105,13 @@ export const FIX_SUGGESTIONS: Record<string, string> = {
   'bpmn-mcp/receive-task-missing-message':
     'Use manage_bpmn_root_elements to create a message definition, then set_bpmn_element_properties to assign messageRef{elementRef}',
   'bpmn-mcp/lane-without-assignments':
-    'Assign elements to the lane using redistribute_bpmn_elements_across_lanes (strategy: manual), or remove the empty lane with delete_bpmn_element{elementRef}',
+    "Assign elements to the lane using manage_bpmn_lanes with mode: 'redistribute' and strategy: 'manual', or remove the empty lane with delete_bpmn_element{elementRef}",
   'bpmn-mcp/collaboration-pattern-mismatch':
     'Review the collaboration structure. Use one expanded executable pool with collapsed partner pools for external systems',
   'bpmn-mcp/message-flow-crossing-excessive':
     'Reorder participants or reposition elements to reduce message flow crossings. Use move_bpmn_element or layout_bpmn_diagram',
   'bpmn-mcp/layout-needs-alignment':
-    'Run layout_bpmn_diagram to auto-arrange elements, or use align_bpmn_elements to align specific groups{elementRef}',
+    'Run layout_bpmn_diagram to auto-arrange elements, or use layout_bpmn_diagram with mode: "align" to align specific groups{elementRef}',
   'bpmn-mcp/missing-di-shape':
     'Run layout_bpmn_diagram to regenerate diagram layout including missing DI shapes, or re-export with export_bpmn{elementRef}',
 };

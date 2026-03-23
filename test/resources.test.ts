@@ -129,6 +129,8 @@ describe('readResource', () => {
     expect(result.contents).toHaveLength(1);
     expect(result.contents[0].mimeType).toBe('text/markdown');
     expect(result.contents[0].text).toContain('Executable BPMN for Camunda 8');
+    expect(result.contents[0].text).toContain('generate_bpmn_from_structure');
+    expect(result.contents[0].text).toContain('first-pass construction');
     expect(result.contents[0].text).toContain('zeebe:TaskDefinition');
     expect(result.contents[0].text).toContain('Link events');
     expect(result.contents[0].text).toContain('implicit merge');

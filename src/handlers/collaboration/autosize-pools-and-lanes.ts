@@ -1,8 +1,6 @@
 /**
- * Handler for autosize_bpmn_pools_and_lanes tool.
- *
- * Dynamically resizes pools and their lanes to fit contained elements
- * with proper spacing.
+ * Legacy standalone pool autosize helper retained for internal reuse.
+ * External callers should use layout_bpmn_diagram with autosizeOnly: true.
  */
 // @mutating
 
@@ -340,12 +338,10 @@ export async function handleAutosizePoolsAndLanes(
 }
 
 export const TOOL_DEFINITION = {
-  name: 'autosize_bpmn_pools_and_lanes',
+  name: '__legacy_internal_autosize_pools',
   description:
-    'Resize pools and their lanes to fit contained elements with proper spacing. ' +
-    'When participantId is given, resizes only that single pool. When omitted, resizes all pools. ' +
-    'Calculates optimal pool width based on element count and content extent. ' +
-    'Lane heights are proportionally distributed based on their content.',
+    'Legacy standalone autosize schema retained for internal reference. ' +
+    'External callers should use layout_bpmn_diagram with autosizeOnly: true.',
   inputSchema: {
     type: 'object',
     properties: {

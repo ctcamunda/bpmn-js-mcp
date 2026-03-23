@@ -63,7 +63,7 @@ function buildStructureRecommendation(
       if (assignees.size >= 2) {
         return (
           `Found ${assignees.size} distinct assignees (${[...assignees].join(', ')}) across ` +
-          `${userTasks.length} user tasks without lanes. Consider using analyze_bpmn_lanes (mode: suggest) ` +
+          `${userTasks.length} user tasks without lanes. Consider using manage_bpmn_lanes (mode: suggest) ` +
           'and create_bpmn_lanes to organize tasks by role.'
         );
       }
@@ -71,7 +71,7 @@ function buildStructureRecommendation(
         return (
           `Found ${userTasks.length} user/manual tasks without lanes. ` +
           'Consider adding zeebe:AssignmentDefinition to tasks and organizing into lanes, ' +
-          'or use analyze_bpmn_lanes (mode: suggest) for a type-based lane suggestion.'
+          'or use manage_bpmn_lanes (mode: suggest) for a type-based lane suggestion.'
         );
       }
     }

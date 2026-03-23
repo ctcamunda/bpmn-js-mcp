@@ -57,12 +57,14 @@ describe('clientRequestId idempotency', () => {
     const createRes = parseResult(await dispatchToolCall('create_bpmn_diagram', {}));
     const diagramId = createRes.diagramId;
 
-    // Call validate twice with same _clientRequestId — each call re-executes
-    const res1 = await dispatchToolCall('validate_bpmn_diagram', {
+    // Call inspect twice with same _clientRequestId — each call re-executes
+    const res1 = await dispatchToolCall('inspect_bpmn', {
+      mode: 'validation',
       diagramId,
       _clientRequestId: 'validate-001',
     });
-    const res2 = await dispatchToolCall('validate_bpmn_diagram', {
+    const res2 = await dispatchToolCall('inspect_bpmn', {
+      mode: 'validation',
       diagramId,
       _clientRequestId: 'validate-001',
     });

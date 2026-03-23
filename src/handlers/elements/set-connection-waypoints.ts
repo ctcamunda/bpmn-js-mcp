@@ -1,9 +1,6 @@
 /**
- * Handler for set_bpmn_connection_waypoints tool.
- *
- * Allows manual control over sequence flow and message flow waypoints.
- * Useful for deterministic routing of loopbacks, cross-lane handoffs,
- * and other special cases where the auto-router produces suboptimal paths.
+ * Legacy standalone waypoint-update helper retained for internal reuse.
+ * External callers should use connect_bpmn_elements with connectionId + waypoints.
  */
 // @mutating
 
@@ -62,7 +59,7 @@ export async function handleSetConnectionWaypoints(
       success: false,
       error:
         `Element "${connectionId}" is not a connection (got: ${connType}). ` +
-        'set_bpmn_connection_waypoints only works with SequenceFlow, MessageFlow, or Association.',
+        'Waypoint updates only work with SequenceFlow, MessageFlow, or Association.',
     });
   }
 
@@ -98,13 +95,10 @@ export async function handleSetConnectionWaypoints(
 }
 
 export const TOOL_DEFINITION = {
-  name: 'set_bpmn_connection_waypoints',
+  name: '__legacy_internal_waypoint_update',
   description:
-    'Set custom waypoints on a sequence flow, message flow, or association. ' +
-    'Enables deterministic, clean routing for special cases like loopbacks, ' +
-    'cross-lane handoffs, or message flows where the auto-router produces suboptimal paths. ' +
-    'Waypoints must include at least the start and end points. ' +
-    'Use list_bpmn_elements to see current waypoints of connections.',
+    'Legacy standalone waypoint-update schema retained for internal reference. ' +
+    'External callers should use connect_bpmn_elements with connectionId + waypoints.',
   inputSchema: {
     type: 'object',
     properties: {

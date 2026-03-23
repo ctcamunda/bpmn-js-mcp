@@ -34,7 +34,7 @@ const SHARED_EFFICIENCY_GUIDELINES =
   `so that every mutating tool response appends a live SVG preview.\n` +
   `- **Reduce noise during construction:** Pass \`hintLevel: "minimal"\` when calling ` +
   `\`create_bpmn_diagram\` to suppress connectivity warnings during incremental building. ` +
-  `Switch to full validation at the end via \`validate_bpmn_diagram\`.\n` +
+  `Switch to full validation at the end via \`inspect_bpmn\` with \`mode: "validation"\`.\n` +
   `- **Always specify \`afterElementId\`** when extending an existing flow with ` +
   `\`add_bpmn_element_chain\` — omitting it creates a disconnected segment that requires ` +
   `extra manual wiring.\n`;
@@ -100,6 +100,8 @@ const PROMPTS: PromptDefinition[] = [
             `- Use \`create_bpmn_diagram\` to start, then \`add_bpmn_element\` / ` +
             `\`add_bpmn_element_chain\` / \`connect_bpmn_elements\` to build the flow.\n\n` +
             `**Task configuration (make it deployable):**\n` +
+            `- Treat the specialized property tools as the **authoritative** way to configure executable behavior. ` +
+            `Use the element-specific tools first so type-specific semantics stay explicit.\n` +
             `- UserTasks: set \`zeebe:assignee\` or \`zeebe:candidateGroups\` via ` +
             `\`set_bpmn_element_properties\`. ` +
             `Add forms with \`set_bpmn_form_data\` (formId for deployed forms, or embedded JSON).\n` +
@@ -108,6 +110,9 @@ const PROMPTS: PromptDefinition[] = [
             `for FEEL-based input/output mappings.\n` +
             `- BusinessRuleTasks: set \`zeebe:decisionId\` and \`zeebe:resultVariable\` ` +
             `via \`set_bpmn_element_properties\` for DMN decision tables.\n` +
+            `- Use \`configure_bpmn_zeebe_extensions\` only as an **optional batch shortcut** after the ` +
+            `structure is in place, when you need to apply the same kind of Zeebe setup across multiple elements. ` +
+            `It does NOT replace the specialized tools.\n` +
             `- Gateways: always set condition expressions on outgoing flows and mark ` +
             `one flow as the default with \`isDefault: true\`. The default flow must NOT ` +
             `have a conditionExpression — it is the engine fallback. When using ` +
@@ -121,18 +126,27 @@ const PROMPTS: PromptDefinition[] = [
             `2. Then connect the retry flow to the new gateway with \`connect_bpmn_elements\`.\n` +
             `Never connect two flows directly into a non-gateway task — this creates an implicit merge that ` +
             `causes multiple token activations at runtime and will block the export lint gate.\n\n` +
+            `**Preferred first-pass construction workflow:**\n` +
+            `- When the user already gives a reasonably complete process description ` +
+            `(main steps, key branches, and obvious subprocess boundaries), prefer ` +
+            `\`generate_bpmn_from_structure\` to create the initial BPMN skeleton in one call.\n` +
+            `- After generation, use the specialized executable-authoring tools to add Zeebe semantics ` +
+            `and correct any details the generator did not capture.\n` +
+            `- Use low-level element tools first only when the job is mainly an incremental edit, a ` +
+            `geometry-sensitive refinement, or an advanced construct that still benefits from explicit manual modeling.\n\n` +
             `**Workflow (when the user gives you a process to model):**\n` +
             `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
-            `2. Build the flow using \`batch_bpmn_operations\` to add elements and connections together\n` +
+            `2. If the process description is already fairly complete, start with \`generate_bpmn_from_structure\`; otherwise build incrementally with \`batch_bpmn_operations\`, \`add_bpmn_element\`, and \`connect_bpmn_elements\`\n` +
             `3. Configure tasks (zeebe:assignee, zeebe:type, etc.)\n` +
             `4. \`layout_bpmn_diagram\` to arrange elements — non-orthogonal (Z-shaped) flows are ` +
             `automatically corrected; re-run layout if \`qualityMetrics.orthogonalFlowPercent\` ` +
             `is still below 90%. If the response lists \`nonOrthogonalFlowIds\`, call ` +
-            `\`set_bpmn_connection_waypoints\` for each ID with a 2-point straight path instead ` +
-            `of re-running full layout. Use \`layout_bpmn_diagram\` with \`labelsOnly: true\` ` +
+            `\`connect_bpmn_elements\` with \`connectionId\` + \`waypoints\` for each ID to snap ` +
+            `it to a 2-point straight path instead of re-running full layout. Use ` +
+            `\`layout_bpmn_diagram\` with \`labelsOnly: true\` ` +
             `after structural changes to reposition gateway labels onto their flow-free side ` +
             `without moving other elements.\n` +
-            `5. \`validate_bpmn_diagram\` to check for issues\n` +
+            `5. \`inspect_bpmn\` with \`mode: "validation"\` to check for issues\n` +
             `6. Fix any reported issues\n` +
             `7. \`export_bpmn\` with \`filePath\` to save` +
             BOUNDARY_EVENT_GUIDANCE +
@@ -170,12 +184,18 @@ const PROMPTS: PromptDefinition[] = [
             `\`create_bpmn_participant\` with \`participants\` array where partner entries ` +
             `have \`collapsed: true\`. Connect via \`connect_bpmn_elements\` (auto-creates ` +
             `message flows across pools).\n` +
-            `- **Only ONE pool is executable** per deployment — partner pools are for ` + +
+            `- **Only ONE pool is executable** per deployment — partner pools are for ` +
             `documentation only.\n\n` +
             `**Task configuration (make it deployable):**\n` +
+            `- Treat the specialized property tools as the **authoritative** way to configure executable behavior. ` +
+            `Use the element-specific tools first so role, form, and worker semantics remain explicit.\n` +
             `- UserTasks: set \`zeebe:assignee\` or \`zeebe:candidateGroups\`. ` +
             `Match the lane role (e.g. lane "Manager" → candidateGroups: "managers").\n` +
             `- ServiceTasks: set \`zeebe:type\` (job type for Zeebe workers).\n` +
+            `- Use \`configure_bpmn_zeebe_extensions\` only as an **optional batch shortcut** after the ` +
+            `pool/lane structure is stable, when multiple elements need the same style of Zeebe configuration. ` +
+            `Do not treat it as a replacement for \`set_bpmn_element_properties\`, \`set_bpmn_form_data\`, ` +
+            `or \`set_bpmn_input_output_mapping\`.\n` +
             `- Gateways: always set condition expressions and a default flow. ` +
             `The default flow must NOT have a conditionExpression.\n\n` +
             `**Retry / loop-back flows (CRITICAL):**\n` +
@@ -185,18 +205,27 @@ const PROMPTS: PromptDefinition[] = [
             `2. Then connect the retry flow to the new gateway with \`connect_bpmn_elements\`.\n` +
             `Never connect two flows directly into a non-gateway task — this creates an implicit merge that ` +
             `causes multiple token activations at runtime and will block the export lint gate.\n\n` +
+            `**Preferred first-pass construction workflow:**\n` +
+            `- When the user already gives a reasonably complete process description ` +
+            `(main steps, lane or participant structure, key branches, and obvious subprocess boundaries), ` +
+            `prefer \`generate_bpmn_from_structure\` to create the initial BPMN skeleton in one call.\n` +
+            `- After generation, use the specialized executable-authoring tools to add Zeebe properties, forms, ` +
+            `I/O mappings, and other executable semantics.\n` +
+            `- Use low-level element tools first only when the task is mainly an incremental edit, pool/lane ` +
+            `geometry cleanup, or an advanced construct that still benefits from explicit manual modeling.\n\n` +
             `**Workflow (when the user gives you a process to model):**\n` +
             `1. \`create_bpmn_diagram\` with \`includeImage: true\` and \`hintLevel: "minimal"\`\n` +
             `2. \`create_bpmn_participant\` (with optional lanes)\n` +
-            `3. Build flow using \`batch_bpmn_operations\` (add elements + connect in one call)\n` +
+            `3. If the process description is already fairly complete, start with \`generate_bpmn_from_structure\`; otherwise build incrementally with \`batch_bpmn_operations\`, \`add_bpmn_element\`, and \`connect_bpmn_elements\`\n` +
             `4. \`layout_bpmn_diagram\` — non-orthogonal flows are automatically corrected; ` +
             `re-run if \`qualityMetrics.orthogonalFlowPercent\` < 90%. If the response lists ` +
-            `\`nonOrthogonalFlowIds\`, call \`set_bpmn_connection_waypoints\` for each ID with ` +
-            `a 2-point straight path instead of re-running full layout. Use ` +
-            `\`layout_bpmn_diagram\` with \`labelsOnly: true\` after structural changes to ` +
-            `reposition gateway labels onto their flow-free side without moving other elements. ` +
-            `→ \`autosize_bpmn_pools_and_lanes\`\n` +
-            `5. \`validate_bpmn_diagram\` → fix issues\n` +
+            `\`nonOrthogonalFlowIds\`, call \`connect_bpmn_elements\` with \`connectionId\` + ` +
+            `\`waypoints\` for each ID to snap it to a 2-point straight path instead of ` +
+            `re-running full layout. Use \`layout_bpmn_diagram\` with \`labelsOnly: true\` after ` +
+            `structural changes to reposition gateway labels onto their flow-free side without ` +
+            `moving other elements, then run \`layout_bpmn_diagram\` with \`autosizeOnly: true\` ` +
+            `if pools or lanes need resizing.\n` +
+            `5. \`inspect_bpmn\` with \`mode: "validation"\` → fix issues\n` +
             `6. \`export_bpmn\` with \`filePath\` to save` +
             BOUNDARY_EVENT_GUIDANCE +
             SHARED_EFFICIENCY_GUIDELINES +
@@ -249,7 +278,8 @@ const PROMPTS: PromptDefinition[] = [
             `2. \`create_bpmn_participant\` with multiple expanded pools\n` +
             `3. Build each pool's internal flow using \`batch_bpmn_operations\`\n` +
             `4. \`connect_bpmn_elements\` for message flows between pools\n` +
-            `5. \`layout_bpmn_diagram\` → \`autosize_bpmn_pools_and_lanes\`\n` +
+            `5. \`layout_bpmn_diagram\`, then \`layout_bpmn_diagram\` with \`autosizeOnly: true\` ` +
+            `if pools or lanes need resizing\n` +
             `6. \`export_bpmn\` with \`filePath\` and \`skipLint: true\` to save ` +
             `(non-executable diagrams may trigger lint warnings)` +
             SHARED_EFFICIENCY_GUIDELINES +

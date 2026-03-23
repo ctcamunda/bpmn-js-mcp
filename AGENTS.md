@@ -72,12 +72,12 @@ Modular `src/` layout, communicates over **stdio** using the MCP SDK. See [`docs
 
 **Every tool name includes `bpmn`** to avoid collisions with other MCPs.
 
-- **Core structural tools:** `create_bpmn_diagram`, `add_bpmn_element` (includes insert-into-flow via `flowId`, cross-lane handoff via `fromElementId`+`toLaneId`), `connect_bpmn_elements`, `delete_bpmn_element`, `move_bpmn_element` (includes resize via `width`/`height`), `replace_bpmn_element`, `list_bpmn_elements`, `validate_bpmn_diagram`, `align_bpmn_elements` (includes distribute via `orientation`), `export_bpmn`, `import_bpmn_xml`
-- **Property / extension tools:** `get_bpmn_element_properties`, `set_bpmn_element_properties`, `set_bpmn_input_output_mapping`, `set_bpmn_event_definition`, `set_bpmn_form_data`, `set_bpmn_camunda_listeners` (includes error definitions), `set_bpmn_loop_characteristics`, `set_bpmn_call_activity_variables`, `set_bpmn_connection_waypoints`
-- **Collaboration tools:** `create_bpmn_participant`, `create_bpmn_lanes`, `assign_bpmn_elements_to_lane`, `wrap_bpmn_process_in_collaboration`, `manage_bpmn_root_elements`, `analyze_bpmn_lanes` (modes: suggest, validate, pool-vs-lanes), `convert_bpmn_collaboration_to_lanes`, `redistribute_bpmn_elements_across_lanes`, `autosize_bpmn_pools_and_lanes`
-- **History tools:** `bpmn_history`, `diff_bpmn_diagrams`
+- **Core structural tools:** `create_bpmn_diagram` (includes cloning via `cloneFrom`), `add_bpmn_element` (includes insert-into-flow via `flowId`, cross-lane handoff via `fromElementId`+`toLaneId`), `connect_bpmn_elements` (includes waypoint mode via `connectionId`+`waypoints`), `delete_bpmn_element`, `move_bpmn_element` (includes resize via `width`/`height`), `list_bpmn_elements`, `validate_bpmn_diagram`, `align_bpmn_elements` (includes distribute via `orientation`), `export_bpmn`, `import_bpmn_xml`, `add_bpmn_element_chain`, `generate_bpmn_from_structure`
+- **Property / extension tools:** `get_bpmn_element_properties`, `set_bpmn_element_properties`, `set_bpmn_input_output_mapping`, `set_bpmn_event_definition`, `set_bpmn_form_data`, `set_bpmn_camunda_listeners` (Zeebe execution/task listeners plus error definitions), `set_bpmn_loop_characteristics`, `set_bpmn_call_activity_variables`, `configure_bpmn_zeebe_extensions`
+- **Collaboration tools:** `create_bpmn_participant` (includes `wrapExisting` and multi-pool creation), `create_bpmn_lanes` (includes `mergeFrom` conversion), `assign_bpmn_elements_to_lane`, `manage_bpmn_root_elements`, `analyze_bpmn_lanes` (modes: suggest, validate, pool-vs-lanes, redistribute)
+- **History tools:** `bpmn_history`
 - **Batch tools:** `batch_bpmn_operations`
-- **Utility tools:** `delete_bpmn_diagram`, `list_bpmn_diagrams` (includes diagram summary via `diagramId`), `list_bpmn_process_variables`, `clone_bpmn_diagram`, `layout_bpmn_diagram`, `add_bpmn_element_chain`
+- **Utility tools:** `delete_bpmn_diagram`, `list_bpmn_diagrams` (includes diagram summary via `diagramId` and diffs via `compareWith`), `list_bpmn_process_variables`, `layout_bpmn_diagram`
 - **Internal-only handlers (not registered as MCP tools):** `handleCreateCollaboration`, `handleInsertElement`, `handleSplitParticipantIntoLanes`, `handleSummarizeDiagram`, `handleDuplicateElement`, `handleSetScript`, `handleAdjustLabels`, `handleSuggestLaneOrganization`, `handleValidateLaneOrganization`, `handleSuggestPoolVsLanes`, `handleHandoffToLane`
 
 ## Build & Run

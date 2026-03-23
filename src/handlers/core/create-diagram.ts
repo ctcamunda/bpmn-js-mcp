@@ -253,7 +253,7 @@ export const TOOL_DEFINITION = {
         description:
           'When true, suppress implicit lint feedback on every operation. ' +
           'Useful during incremental diagram construction to reduce noise. ' +
-          'Validation is still available via validate_bpmn_diagram, and ' +
+          'Validation is still available via inspect_bpmn with mode: "validation", and ' +
           'export_bpmn still enforces its lint gate. Default: false. ' +
           'Deprecated: use hintLevel instead.',
       },

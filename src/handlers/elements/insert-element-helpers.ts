@@ -1,5 +1,5 @@
 /**
- * Helpers for the insert_bpmn_element handler.
+ * Helpers for the legacy internal flow-insertion handler.
  *
  * Split out to keep insert-element.ts within the max-lines limit.
  */

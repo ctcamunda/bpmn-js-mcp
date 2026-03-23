@@ -1,11 +1,11 @@
 /**
- * JSON Schema for the redistribute_bpmn_elements_across_lanes tool.
+ * Legacy internal schema for lane redistribution.
  *
  * Extracted from redistribute-elements-across-lanes.ts to stay within lint line limits.
  */
 
 export const TOOL_DEFINITION = {
-  name: 'redistribute_bpmn_elements_across_lanes',
+  name: '__legacy_internal_redistribute_lanes',
   description:
     'Rebalance element placement across existing lanes in a pool. Analyzes assignee/role patterns, ' +
     'flow-neighbor connections, and lane capacity to produce a better distribution. ' +

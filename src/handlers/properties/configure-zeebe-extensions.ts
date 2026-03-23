@@ -10,6 +10,7 @@
 import { type ToolResult } from '../../types';
 import { validateArgs, requireDiagram, requireElement, jsonResult, syncXml, getService } from '../helpers';
 import { appendLintFeedback } from '../../linter';
+import { typeMismatchError } from '../../errors';
 
 // ── Zeebe extension element builders ───────────────────────────────────────
 
@@ -60,6 +61,43 @@ export interface ZeebeElementConfig {
 export interface ConfigureZeebeExtensionsArgs {
   diagramId: string;
   elements: Record<string, ZeebeElementConfig>;
+}
+
+const USER_TASK_TYPES = new Set(['bpmn:UserTask']);
+const TASK_DEFINITION_TYPES = new Set([
+  'bpmn:ServiceTask',
+  'bpmn:SendTask',
+  'bpmn:BusinessRuleTask',
+]);
+const IO_MAPPING_TYPES = new Set([
+  'bpmn:Task',
+  'bpmn:UserTask',
+  'bpmn:ServiceTask',
+  'bpmn:ScriptTask',
+  'bpmn:ManualTask',
+  'bpmn:BusinessRuleTask',
+  'bpmn:SendTask',
+  'bpmn:ReceiveTask',
+  'bpmn:CallActivity',
+  'bpmn:SubProcess',
+]);
+
+function validateConfigForElement(elementId: string, elementType: string, config: ZeebeElementConfig): void {
+  if (config.taskDefinition && !TASK_DEFINITION_TYPES.has(elementType)) {
+    throw typeMismatchError(elementId, elementType, [...TASK_DEFINITION_TYPES]);
+  }
+  if (config.taskHeaders && !TASK_DEFINITION_TYPES.has(elementType)) {
+    throw typeMismatchError(elementId, elementType, [...TASK_DEFINITION_TYPES]);
+  }
+  if (config.ioMapping && !IO_MAPPING_TYPES.has(elementType)) {
+    throw typeMismatchError(elementId, elementType, [...IO_MAPPING_TYPES]);
+  }
+  if ((config.formDefinition || config.userTask || config.assignment) && !USER_TASK_TYPES.has(elementType)) {
+    throw typeMismatchError(elementId, elementType, [...USER_TASK_TYPES]);
+  }
+  if (config.calledDecision && elementType !== 'bpmn:BusinessRuleTask') {
+    throw typeMismatchError(elementId, elementType, ['bpmn:BusinessRuleTask']);
+  }
 }
 
 // ── Zeebe element builders ─────────────────────────────────────────────────
@@ -151,6 +189,7 @@ export async function handleConfigureZeebeExtensions(
 
     try {
       const element = requireElement(elementRegistry, elementId);
+      validateConfigForElement(elementId, element.type, config);
       const bo = element.businessObject;
       const ext = ensureExtensionElements(moddle, bo);
 

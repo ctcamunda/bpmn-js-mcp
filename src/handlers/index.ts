@@ -20,13 +20,13 @@ import { ERR_INTERNAL } from '../errors';
 // ── Core: diagram lifecycle, import/export, validation, batch ──────────────
 
 import { handleCreateDiagram, TOOL_DEFINITION as CREATE_DIAGRAM_DEF } from './core/create-diagram';
-import { handleDeleteDiagram, TOOL_DEFINITION as DELETE_DIAGRAM_DEF } from './core/delete-diagram';
+import { handleDeleteDiagram } from './core/delete-diagram';
 import { handleCloneDiagram } from './core/clone-diagram';
-import { handleListDiagrams, TOOL_DEFINITION as LIST_DIAGRAMS_DEF } from './core/list-diagrams';
+import { handleListDiagrams } from './core/list-diagrams';
 import { handleSummarizeDiagram } from './core/summarize-diagram';
 import { handleImportXml, TOOL_DEFINITION as IMPORT_XML_DEF } from './core/import-xml';
 import { handleExportBpmn, TOOL_DEFINITION as EXPORT_BPMN_DEF } from './core/export';
-import { handleValidate, TOOL_DEFINITION as VALIDATE_DEF } from './core/validate';
+import { handleValidate } from './core/validate';
 import {
   handleBatchOperations,
   TOOL_DEFINITION as BATCH_OPERATIONS_DEF,
@@ -46,6 +46,7 @@ import {
   handleGenerateFromStructure,
   TOOL_DEFINITION as GENERATE_FROM_STRUCTURE_DEF,
 } from './core/generate-from-structure';
+import { handleInspectBpmn, TOOL_DEFINITION as INSPECT_BPMN_DEF } from './core/inspect';
 
 // ── Elements: element CRUD operations ──────────────────────────────────────
 
@@ -75,7 +76,6 @@ import {
 import { handleListElements, TOOL_DEFINITION as LIST_ELEMENTS_DEF } from './elements/list-elements';
 import {
   handleGetProperties,
-  TOOL_DEFINITION as GET_PROPERTIES_DEF,
 } from './elements/get-properties';
 import { handleSetConnectionWaypoints } from './elements/set-connection-waypoints';
 
@@ -121,10 +121,7 @@ import {
   handleLayoutDiagram,
   TOOL_DEFINITION as LAYOUT_DIAGRAM_DEF,
 } from './layout/layout-diagram';
-import {
-  handleAlignElements,
-  TOOL_DEFINITION as ALIGN_ELEMENTS_DEF,
-} from './layout/align-elements';
+import { handleAlignElements } from './layout/align-elements';
 import { handleAdjustLabels } from './layout/labels/adjust-labels-handler';
 
 // ── Collaboration: pools, root elements ────────────────────────────────────
@@ -138,10 +135,7 @@ import {
   handleCreateLanes,
   TOOL_DEFINITION as CREATE_LANES_DEF,
 } from './collaboration/create-lanes';
-import {
-  handleAssignElementsToLane,
-  TOOL_DEFINITION as ASSIGN_ELEMENTS_TO_LANE_DEF,
-} from './collaboration/assign-elements-to-lane';
+import { handleAssignElementsToLane } from './collaboration/assign-elements-to-lane';
 import { handleWrapProcessInCollaboration } from './collaboration/wrap-process-in-collaboration';
 import { handleSplitParticipantIntoLanes } from './collaboration/split-participant-into-lanes';
 import {
@@ -154,8 +148,11 @@ import {
   handleValidateLaneOrganization,
   handleSuggestPoolVsLanes,
   handleAnalyzeLanes,
-  TOOL_DEFINITION as ANALYZE_LANES_DEF,
 } from './collaboration/analyze-lanes';
+import {
+  handleManageBpmnLanes,
+  TOOL_DEFINITION as MANAGE_BPMN_LANES_DEF,
+} from './collaboration/manage-lanes';
 import { handleConvertCollaborationToLanes } from './collaboration/convert-collaboration-to-lanes';
 import { handleRedistributeElementsAcrossLanes } from './collaboration/redistribute-elements-across-lanes';
 import { handleAutosizePoolsAndLanes } from './collaboration/autosize-pools-and-lanes';
@@ -176,15 +173,10 @@ const TOOL_REGISTRY: ToolRegistration[] = [
   { definition: CONNECT_DEF, handler: handleConnect },
   { definition: DELETE_ELEMENT_DEF, handler: handleDeleteElement },
   { definition: MOVE_ELEMENT_DEF, handler: handleMoveElement },
-  { definition: GET_PROPERTIES_DEF, handler: handleGetProperties },
   { definition: EXPORT_BPMN_DEF, handler: handleExportBpmn },
-  { definition: LIST_ELEMENTS_DEF, handler: handleListElements },
   { definition: SET_PROPERTIES_DEF, handler: handleSetProperties },
   { definition: IMPORT_XML_DEF, handler: handleImportXml },
-  { definition: DELETE_DIAGRAM_DEF, handler: handleDeleteDiagram },
-  { definition: LIST_DIAGRAMS_DEF, handler: handleListDiagrams },
-  { definition: VALIDATE_DEF, handler: handleValidate },
-  { definition: ALIGN_ELEMENTS_DEF, handler: handleAlignElements },
+  { definition: INSPECT_BPMN_DEF, handler: handleInspectBpmn },
   { definition: SET_INPUT_OUTPUT_DEF, handler: handleSetInputOutput },
   { definition: SET_EVENT_DEFINITION_DEF, handler: handleSetEventDefinition },
   { definition: SET_FORM_DATA_DEF, handler: handleSetFormData },
@@ -197,21 +189,19 @@ const TOOL_REGISTRY: ToolRegistration[] = [
   { definition: MANAGE_ROOT_ELEMENTS_DEF, handler: handleManageRootElements },
   { definition: CREATE_LANES_DEF, handler: handleCreateLanes },
   { definition: CREATE_PARTICIPANT_DEF, handler: handleCreateParticipant },
-  { definition: ANALYZE_LANES_DEF, handler: handleAnalyzeLanes },
-  // redistribute_bpmn_elements_across_lanes removed: redistribute mode on analyze_bpmn_lanes
-  // replace_bpmn_element removed: elementType parameter on set_bpmn_element_properties
-  { definition: LIST_PROCESS_VARIABLES_DEF, handler: handleListProcessVariables },
-  // clone_bpmn_diagram removed: cloneFrom parameter on create_bpmn_diagram
-  // diff_bpmn_diagrams removed: compareWith parameter on list_bpmn_diagrams
+  { definition: MANAGE_BPMN_LANES_DEF, handler: handleManageBpmnLanes },
+  // Legacy standalone lane redistribution is now handled by analyze_bpmn_lanes mode: 'redistribute'
+  // Legacy standalone element replacement is now handled by set_bpmn_element_properties.elementType
+  // Diagram cloning is available via create_bpmn_diagram.cloneFrom
+  // Diagram diffing is available via list_bpmn_diagrams.compareWith
   { definition: ADD_ELEMENT_CHAIN_DEF, handler: handleAddElementChain },
-  // set_bpmn_connection_waypoints removed: waypoints+connectionId parameters on connect_bpmn_elements
-  { definition: ASSIGN_ELEMENTS_TO_LANE_DEF, handler: handleAssignElementsToLane },
+  // Connection waypoint updates are available via connect_bpmn_elements connectionId + waypoints
   { definition: GENERATE_FROM_STRUCTURE_DEF, handler: handleGenerateFromStructure },
   { definition: CONFIGURE_ZEEBE_DEF, handler: handleConfigureZeebeExtensions },
-  // wrap_bpmn_process_in_collaboration removed: wrapExisting on create_bpmn_participant
-  // handoff_bpmn_to_lane removed: fromElementId + toLaneId params on add_bpmn_element
-  // convert_bpmn_collaboration_to_lanes removed: mergeFrom on create_bpmn_lanes
-  // autosize_bpmn_pools_and_lanes removed: autosizeOnly on layout_bpmn_diagram
+  // Existing-process wrapping is available via create_bpmn_participant.wrapExisting
+  // Cross-lane handoff is available via add_bpmn_element.fromElementId + toLaneId
+  // Collaboration-to-lanes conversion is available via create_bpmn_lanes.mergeFrom
+  // Pool autosizing is available via layout_bpmn_diagram.autosizeOnly
 ];
 
 // ── Auto-derived exports ───────────────────────────────────────────────────
@@ -222,13 +212,7 @@ const TOOL_REGISTRY: ToolRegistration[] = [
  */
 const READONLY_TOOLS = new Set([
   'export_bpmn',
-  'list_bpmn_diagrams',
-  'list_bpmn_process_variables',
-  'validate_bpmn_diagram',
-  'list_bpmn_elements',
-  'get_bpmn_element_properties',
-  'analyze_bpmn_lanes',
-  'diff_bpmn_diagrams',
+  'inspect_bpmn',
 ]);
 
 /** Property definition for `_clientRequestId` injected into mutating tools. */

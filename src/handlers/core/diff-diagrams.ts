@@ -1,8 +1,6 @@
 /**
- * Handler for diff_bpmn_diagrams tool.
- *
- * Compares two diagrams and returns a structured diff of additions,
- * removals, and changes.
+ * Legacy standalone diff helper retained for internal reuse.
+ * External callers should use list_bpmn_diagrams with diagramId + compareWith.
  */
 // @readonly
 
@@ -149,9 +147,9 @@ export async function handleDiffDiagrams(args: DiffDiagramsArgs): Promise<ToolRe
 }
 
 export const TOOL_DEFINITION = {
-  name: 'diff_bpmn_diagrams',
+  name: '__legacy_internal_diff_diagrams',
   description:
-    'Compare two BPMN diagrams and return a structured diff of additions, removals, and changes. Useful for reviewing AI-generated modifications.',
+    'Legacy standalone diff schema retained for internal reference. External callers should use list_bpmn_diagrams with diagramId + compareWith.',
   inputSchema: {
     type: 'object',
     properties: {

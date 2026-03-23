@@ -1,7 +1,7 @@
 /**
  * Tests for validate_bpmn_diagram improvements:
  * - bpmn-mcp/layout-needs-alignment fixToolCall should include specific
- *   non-orthogonal flow IDs so callers can use set_bpmn_connection_waypoints.
+ *   non-orthogonal flow IDs so callers can use connect_bpmn_elements waypoint mode.
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';

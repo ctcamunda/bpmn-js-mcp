@@ -35,7 +35,6 @@ export interface SetPropertiesArgs {
   /**
    * Optional element type replacement. When provided, replaces the element type
    * (e.g. bpmn:Task → bpmn:UserTask) before setting properties.
-   * Equivalent to the former replace_bpmn_element tool.
    */
   elementType?: string;
 }

@@ -1,11 +1,11 @@
 /**
- * JSON Schema for the insert_bpmn_element tool.
+ * Legacy internal schema for flow insertion.
  *
  * Extracted from insert-element.ts to keep the handler logic under max-lines.
  */
 
 export const TOOL_DEFINITION = {
-  name: 'insert_bpmn_element',
+  name: '__legacy_internal_insert_into_flow',
   description:
     'Insert a new element into an existing sequence flow, splitting the flow and reconnecting automatically. ' +
     'Accepts a flowId to split, the elementType to insert, and an optional name. ' +

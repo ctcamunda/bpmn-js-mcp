@@ -1,5 +1,6 @@
 /**
- * Handler for clone_diagram tool.
+ * Legacy standalone clone helper retained for internal reuse.
+ * External callers should use create_bpmn_diagram with cloneFrom.
  */
 // @mutating
 
@@ -36,8 +37,9 @@ export async function handleCloneDiagram(args: CloneDiagramArgs): Promise<ToolRe
 }
 
 export const TOOL_DEFINITION = {
-  name: 'clone_bpmn_diagram',
-  description: 'Duplicate an existing diagram for experimentation. Returns a new diagram ID.',
+  name: '__legacy_internal_clone_diagram',
+  description:
+    'Legacy standalone clone schema retained for internal reference. External callers should use create_bpmn_diagram with cloneFrom.',
   inputSchema: {
     type: 'object',
     properties: {

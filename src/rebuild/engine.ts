@@ -86,7 +86,7 @@ export interface RebuildOptions {
   /**
    * When true, skip the internal pool/lane resize that normally runs after
    * element positioning.  Use this when the caller intends to run
-   * `autosize_bpmn_pools_and_lanes` (or `handleAutosizePoolsAndLanes`)
+    * the dedicated pool autosize pass (`handleAutosizePoolsAndLanes`)
    * afterwards, to avoid a redundant double-resize.
    *
    * Task 7b: `rebuildLayout` uses a proportional lane-height algorithm

@@ -1,6 +1,6 @@
 # bpmn-js-mcp
 
-MCP server that lets AI assistants create and manipulate BPMN 2.0 workflow diagrams. Uses [bpmn-js](https://bpmn.io/toolkit/bpmn-js/) headlessly via jsdom to produce valid BPMN XML and SVG output with full [Camunda 7](https://docs.camunda.org/manual/7.24/) (Operaton) extension support.
+MCP server that lets AI assistants create and manipulate BPMN 2.0 workflow diagrams. Uses [bpmn-js](https://bpmn.io/toolkit/bpmn-js/) headlessly via jsdom to produce valid BPMN XML and SVG output targeting [Camunda 8](https://docs.camunda.io/) executable BPMN with Zeebe extensions.
 
 ![BPMN Diagram Example](./docs/images/bpmn.png)
 
@@ -62,6 +62,29 @@ You can also combine `--persist-dir` with `--hint-level` to reduce response verb
 
 **To create a new diagram**, use `create_bpmn_diagram`, build it with `add_bpmn_element` / `connect_bpmn_elements`, then `export_bpmn` to get the XML.
 
+### When To Use `generate_bpmn_from_structure`
+
+Use `generate_bpmn_from_structure` as the preferred first-pass authoring path when the user provides a reasonably complete process description, such as:
+
+- the main steps in order
+- the key decisions or branches
+- lanes or participant structure
+- obvious subprocess boundaries
+
+This lets the agent create the initial BPMN skeleton in one call, then switch to the specialized property tools to make it executable.
+
+Prefer low-level tool chains (`add_bpmn_element`, `connect_bpmn_elements`, `layout_bpmn_diagram`, and related tools) when the task is primarily:
+
+- an incremental edit to an existing diagram
+- a geometry-sensitive refinement or routing fix
+- an advanced BPMN construct that still benefits from explicit manual modeling
+
+For executable Camunda 8 models, the recommended workflow is:
+
+1. Use `generate_bpmn_from_structure` for first-pass construction when the process description is already fairly complete.
+2. Use the specialized executable-authoring tools to add Zeebe task definitions, assignments, forms, I/O mappings, event definitions, and loop behavior.
+3. Use the low-level element and layout tools for cleanup, exceptions, and structure refinements.
+
 ### BPMN Modeling Best Practices
 
 Follow these conventions when creating BPMN diagrams:
@@ -77,7 +100,7 @@ Follow these conventions when creating BPMN diagrams:
 - **Show start and end events explicitly** — required for executable processes.
 - **Avoid lanes by default** — use collaboration diagrams (separate pools + message flows) for role separation.
 - **Avoid retry loops in BPMN** — use engine-level retry mechanisms instead (job retries, external task backoff).
-- **Use receive tasks + boundary events for waiting** — for Operaton/Camunda 7, prefer a receive task with boundary timers/messages over event-based gateway patterns.
+- **Use receive tasks + boundary events for waiting** — for executable Camunda 8 models, prefer a receive task with boundary timers/messages over event-based gateway patterns when you need a stable wait state.
 - **Model the happy path first**, then add exceptions incrementally with boundary events and event subprocesses.
 
 See [docs/modeling-best-practices.md](docs/modeling-best-practices.md) for full guidance.
@@ -88,12 +111,12 @@ For best results, follow this recommended workflow after structural changes:
 
 1. **Build structure** — `add_bpmn_element` / `connect_bpmn_elements` to create the flow.
 2. **Auto-layout** — `layout_bpmn_diagram` to arrange elements (use `scopeElementId` to scope to a pool/subprocess).
-3. **Fine-tune** — `align_bpmn_elements` for alignment (with `compact=true` or `orientation` for distribution).
+3. **Fine-tune** — `layout_bpmn_diagram` with `mode: "align"` or `mode: "distribute"` for alignment/distribution refinements.
 4. **Fix labels** — `layout_bpmn_diagram` with `labelsOnly: true` to resolve label overlaps.
 
 No separate "repair layout" tool is needed — chain these existing tools for fine-grained control.
 
-## Available Tools (30)
+## Available Tools
 
 ### Core BPMN Tools
 
@@ -105,31 +128,33 @@ No separate "repair layout" tool is needed — chain these existing tools for fi
 | `connect_bpmn_elements`       | Connect elements (use `connectionId`+`waypoints` for custom routing)                     |
 | `delete_bpmn_element`         | Remove an element or connection                                                          |
 | `move_bpmn_element`           | Move, resize, or reassign an element to a lane                                           |
-| `list_bpmn_elements`          | List elements with filters (name pattern, type, property)                                |
-| `get_bpmn_element_properties` | Inspect all properties of an element                                                     |
-| `validate_bpmn_diagram`       | Validate using bpmnlint (recommended + Camunda 7 + custom MCP rules)                     |
 | `export_bpmn`                 | Export as BPMN 2.0 XML or SVG (with implicit lint gate)                                  |
 | `import_bpmn_xml`             | Import existing BPMN XML (auto-layout if no DI)                                          |
 | `manage_bpmn_root_elements`   | Create or update shared Message and Signal definitions                                   |
+| `generate_bpmn_from_structure`| Generate a complete BPMN diagram from a structured JSON description                      |
+| `inspect_bpmn`                | Unified read-only inspection for diagrams, elements, validation, variables, and diffs    |
 
 ### Layout & Alignment Tools
 
 | Tool                  | Description                                                  |
 | --------------------- | ------------------------------------------------------------ |
 | `layout_bpmn_diagram` | Auto-layout using rebuild engine (labelsOnly mode available) |
-| `align_bpmn_elements` | Align or distribute elements (with optional compaction)      |
+| `layout_bpmn_diagram` | Auto-layout, align, distribute, autosize, or labels-only cleanup                          |
 
-### Camunda 7 / Operaton Tools
+### Camunda 8 / Zeebe Tools
+
+The specialized tools are the primary executable-authoring surface. Use them when correctness and type-specific semantics matter. Treat `configure_bpmn_zeebe_extensions` as an optional batch shortcut for repeated Zeebe setup across multiple already-placed elements, not as a replacement for the specialized tools.
 
 | Tool                               | Description                                         |
 | ---------------------------------- | --------------------------------------------------- |
-| `set_bpmn_element_properties`      | Set standard and Camunda extension properties       |
-| `set_bpmn_input_output_mapping`    | Configure input/output parameter mappings           |
-| `set_bpmn_event_definition`        | Add error, timer, message, signal event definitions |
-| `set_bpmn_form_data`               | Configure generated task forms (Camunda FormData)   |
-| `set_bpmn_camunda_listeners`       | Set listeners and error handling on elements        |
-| `set_bpmn_loop_characteristics`    | Configure loop/multi-instance markers               |
-| `set_bpmn_call_activity_variables` | Set variable mappings on CallActivity elements      |
+| `set_bpmn_element_properties`      | Set standard and Zeebe extension properties                                      |
+| `set_bpmn_input_output_mapping`    | Configure Zeebe input/output mappings using FEEL                               |
+| `set_bpmn_event_definition`        | Add error, timer, message, signal, escalation, and related event definitions   |
+| `set_bpmn_form_data`               | Configure Camunda 8 user task forms (formId, formKey, or embedded JSON)        |
+| `set_bpmn_camunda_listeners`       | Configure Zeebe execution/task listeners and service-task error definitions     |
+| `set_bpmn_loop_characteristics`    | Configure loop and multi-instance markers                                       |
+| `set_bpmn_call_activity_variables` | Set variable propagation and called-process settings on CallActivity elements   |
+| `configure_bpmn_zeebe_extensions`  | Optional batch shortcut for repeated Zeebe task definitions, assignments, forms, headers, and I/O   |
 
 ### Collaboration Tools
 
@@ -137,31 +162,26 @@ No separate "repair layout" tool is needed — chain these existing tools for fi
 | ------------------------------ | ----------------------------------------------------------------------------------------- |
 | `create_bpmn_participant`      | Create pools (use `wrapExisting` to wrap an existing process)                             |
 | `create_bpmn_lanes`            | Create swimlanes (use `mergeFrom` to convert multi-pool to lanes)                         |
-| `assign_bpmn_elements_to_lane` | Bulk-assign elements to a lane                                                            |
-| `analyze_bpmn_lanes`           | Analyze, suggest, and validate lane assignments (modes: suggest, validate, pool-vs-lanes) |
+| `manage_bpmn_lanes`            | Assign, suggest, validate, compare pools vs lanes, or redistribute lane assignments       |
 
 ### Utility Tools
 
 | Tool                          | Description                                                             |
 | ----------------------------- | ----------------------------------------------------------------------- |
-| `delete_bpmn_diagram`         | Remove a diagram from memory                                            |
-| `list_bpmn_diagrams`          | List all diagrams or get a detailed summary (use `compareWith` to diff) |
-| `list_bpmn_process_variables` | List all process variables referenced in a diagram                      |
 | `bpmn_history`                | Undo or redo changes (supports multiple steps)                          |
 | `batch_bpmn_operations`       | Execute multiple operations in a single call                            |
 
 ### Automatic Lint Feedback
 
-All mutating tools automatically append bpmnlint error-level issues to their response. This gives AI callers immediate feedback when an operation introduces a rule violation. The `validate_bpmn_diagram` tool returns all severities for a full report.
+All mutating tools automatically append bpmnlint error-level issues to their response. This gives AI callers immediate feedback when an operation introduces a rule violation. Use `inspect_bpmn` with `mode: "validation"` for a full multi-severity validation report.
 
-The default config extends `bpmnlint:recommended`, `plugin:camunda-compat/camunda-platform-7-24`, and `plugin:bpmn-mcp/recommended`. Key tuning for AI-generated diagrams:
+The default config extends `bpmnlint:recommended`, `plugin:camunda-compat/camunda-cloud-8-9`, and `plugin:bpmn-mcp/recommended`. Key tuning for AI-generated diagrams:
 
 - `label-required` and `no-disconnected` → `warn` (diagrams are built incrementally)
 - `no-overlapping-elements` → `off` (false positives in headless layout mode)
 - `fake-join` → `info` (boundary-event retry patterns produce valid fake-joins)
-- `camunda-compat/history-time-to-live` → `warn` (required for Operaton history cleanup)
 
-The custom `plugin:bpmn-mcp/recommended` adds ~45 Camunda 7 / Operaton-specific rules covering gateway logic, task configuration, lane organization, collaboration patterns, subprocess validation, and layout quality. Override any rule with a `.bpmnlintrc` file in the project root.
+The custom `plugin:bpmn-mcp/recommended` adds project-specific rules covering gateway logic, Zeebe task configuration, lane organization, collaboration patterns, subprocess validation, and layout quality. Override any rule with a `.bpmnlintrc` file in the project root.
 
 ### MCP Resources
 
@@ -174,7 +194,10 @@ Stable, addressable read-context endpoints for AI callers to re-ground context m
 | `bpmn://diagram/{id}/lint`          | Validation issues with fix suggestions                            |
 | `bpmn://diagram/{id}/variables`     | Process variable references with read/write access patterns       |
 | `bpmn://diagram/{id}/xml`           | Current BPMN 2.0 XML for re-grounding                             |
-| `bpmn://guides/executable-camunda7` | Constraints and best practices for Camunda 7 / Operaton           |
+| `bpmn://diagram/{id}/elements`      | Current element inventory with positions, connections, and properties |
+| `bpmn://guides/executable-camunda8` | Constraints and best practices for executable Camunda 8 / Zeebe   |
+| `bpmn://guides/modeling-elements`   | BPMN element selection, boundary-event, and subprocess guidance   |
+| `bpmn://guides/element-properties`  | Supported BPMN and Zeebe property catalog                         |
 
 ### MCP Prompts
 
@@ -182,7 +205,7 @@ Three style-toggle prompts that set the modeling context for the agent session. 
 
 | Prompt            | Description                                                                  |
 | ----------------- | ---------------------------------------------------------------------------- |
-| `executable`      | Flat executable process without a pool (Operaton / Camunda 7)                |
+| `executable`      | Flat executable Camunda 8 / Zeebe process without a pool                     |
 | `executable-pool` | Executable process wrapped in a participant pool, optionally with swim lanes |
 | `collaboration`   | Non-executable multi-pool documentation diagram with message flows           |
 

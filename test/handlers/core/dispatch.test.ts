@@ -16,17 +16,21 @@ describe('dispatchToolCall', () => {
     const createRes = parseResult(await dispatchToolCall('create_bpmn_diagram', {}));
     const diagramId = createRes.diagramId;
 
-    // list_bpmn_diagrams
-    const listRes = parseResult(await dispatchToolCall('list_bpmn_diagrams', {}));
+    // inspect_bpmn diagrams
+    const listRes = parseResult(await dispatchToolCall('inspect_bpmn', { mode: 'diagrams' }));
     expect(listRes.count).toBe(1);
 
-    // validate_bpmn_diagram
-    const validateRes = parseResult(await dispatchToolCall('validate_bpmn_diagram', { diagramId }));
+    // inspect_bpmn validation
+    const validateRes = parseResult(
+      await dispatchToolCall('inspect_bpmn', { mode: 'validation', diagramId })
+    );
     expect(validateRes.issues).toBeDefined();
 
-    // delete_bpmn_diagram
-    const deleteRes = parseResult(await dispatchToolCall('delete_bpmn_diagram', { diagramId }));
-    expect(deleteRes.success).toBe(true);
+    // inspect_bpmn element summary
+    const diagramRes = parseResult(
+      await dispatchToolCall('inspect_bpmn', { mode: 'diagram', diagramId })
+    );
+    expect(diagramRes.diagramName).toBeDefined();
   });
 
   test('throws for unknown tool', async () => {

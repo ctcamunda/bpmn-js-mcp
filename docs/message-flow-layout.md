@@ -20,9 +20,9 @@ Guidelines for creating readable collaboration diagrams with message flows.
 
 See [modeling-best-practices.md](modeling-best-practices.md#when-to-use-pools-vs-lanes) for the full decision guide.
 
-## Camunda 7 / Operaton pattern
+## Executable Camunda 8 pattern
 
-In Camunda 7, **only one pool is executable**. Additional pools must be **collapsed** (thin bars representing external systems).
+For executable Camunda 8 models, **only one pool should be executable**. Additional pools should be **collapsed** (thin bars representing external systems).
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -103,7 +103,7 @@ When the external system is not a meaningful message partner (e.g., a REST API c
 (Start) → [ServiceTask: Call API] → [Process Result] → (End)
 ```
 
-Configure with `camunda:type="external"` and `camunda:topic` for Camunda 7 external task workers.
+Configure with `zeebe:type` (job type) and optional `zeebe:retries` for Camunda 8 service-task workers.
 
 ## Troubleshooting message flow layout
 
@@ -132,7 +132,7 @@ Configure with `camunda:type="external"` and `camunda:topic` for Camunda 7 exter
 
 **Fix:**
 
-1. Use `autosize_bpmn_pools_and_lanes` to auto-expand pools.
+1. Use `layout_bpmn_diagram` with `autosizeOnly: true` to auto-expand pools.
 2. Or manually resize with `move_bpmn_element` setting `width` to a larger value.
 3. After resizing, run `layout_bpmn_diagram` to redistribute elements within the expanded pool.
 
@@ -146,5 +146,5 @@ Configure with `camunda:type="external"` and `camunda:topic` for Camunda 7 exter
 | Set message on event  | `set_bpmn_event_definition`     | With `messageRef` to reference shared message  |
 | Align paired elements | `align_bpmn_elements`           | Use `alignment: "center"` on paired elements   |
 | Resize pools          | `move_bpmn_element`             | Set `width`/`height`                           |
-| Auto-size pools       | `autosize_bpmn_pools_and_lanes` | Auto-expands to fit content                    |
+| Auto-size pools       | `layout_bpmn_diagram`           | Use `autosizeOnly: true` to expand to fit content |
 | Full layout           | `layout_bpmn_diagram`           | Includes pool/lane finalization                |

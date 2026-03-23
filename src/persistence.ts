@@ -91,6 +91,7 @@ export async function persistDiagram(diagramId: string, diagram: DiagramState): 
   if (!persistDir) return;
   assertSafeDiagramId(diagramId);
   try {
+    await fs.mkdir(persistDir, { recursive: true });
     const { xml } = await diagram.modeler.saveXML({ format: true });
     const filePath = path.join(persistDir, `${diagramId}.bpmn`);
     const meta = { name: diagram.name };

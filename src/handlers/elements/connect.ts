@@ -1,11 +1,11 @@
 /**
  * Handler for connect_bpmn_elements tool.
  *
- * Merges the former connect_bpmn_elements, create_bpmn_data_association,
- * and auto_connect_bpmn_elements tools into one.
+ * Unified connection handler supporting pair, chain, data-association,
+ * and waypoint-update modes.
  *
- * - Pair mode: sourceElementId + targetElementId (original connect)
- * - Chain mode: elementIds array (former auto_connect)
+ * - Pair mode: sourceElementId + targetElementId
+ * - Chain mode: elementIds array
  * - Data associations: auto-detected when source/target is a data object/store
  */
 // @mutating
@@ -53,7 +53,6 @@ export interface ConnectArgs {
   /**
    * ID of an existing connection to update waypoints on.
    * When provided together with waypoints, sets custom waypoints on the existing connection.
-   * Equivalent to the former set_bpmn_connection_waypoints tool.
    */
   connectionId?: string;
   /**
@@ -444,8 +443,9 @@ async function handlePairConnect(args: ConnectArgs): Promise<ToolResult> {
       ...(sourceType === 'bpmn:ParallelGateway'
         ? [
             {
-              tool: 'align_bpmn_elements',
-              description: 'Space branch targets: align_bpmn_elements (horizontal, gap 50).',
+              tool: 'layout_bpmn_diagram',
+              description:
+                'Space branch targets with layout_bpmn_diagram using mode: "distribute", orientation: "horizontal", and gap: 50.',
             },
           ]
         : []),
@@ -455,7 +455,7 @@ async function handlePairConnect(args: ConnectArgs): Promise<ToolResult> {
 }
 
 /**
- * Chain mode: connect a list of elements sequentially (former auto_connect).
+ * Chain mode: connect a list of elements sequentially.
  */
 async function handleChainConnect(diagramId: string, elementIds: string[]): Promise<ToolResult> {
   if (elementIds.length < 2) {

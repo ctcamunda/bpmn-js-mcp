@@ -244,7 +244,7 @@ export async function handleValidate(args: ValidateArgs): Promise<ToolResult> {
   const effectiveConfig = config ? getEffectiveConfig(config) : getEffectiveConfig();
 
   // Run bpmnlint — the default config extends bpmnlint:recommended,
-  // plugin:camunda-compat/camunda-platform-7-24, and plugin:bpmn-mcp/recommended
+  // plugin:camunda-compat/camunda-cloud-8-9, and plugin:bpmn-mcp/recommended
   let lintIssues: FlatLintIssue[] = [];
   try {
     lintIssues = await lintDiagramFlat(diagram, effectiveConfig);
@@ -279,7 +279,7 @@ export async function handleValidate(args: ValidateArgs): Promise<ToolResult> {
         args: { ...fixToolCall.args, nonOrthogonalFlowIds },
         hint:
           `${nonOrthogonalFlowIds.length} non-orthogonal flow(s) detected: [${nonOrthogonalFlowIds.join(', ')}]. ` +
-          `Use set_bpmn_connection_waypoints on each to snap it to a straight 2-point path, ` +
+          `Use connect_bpmn_elements with connectionId + waypoints on each to snap it to a straight 2-point path, ` +
           `or run layout_bpmn_diagram to re-arrange all elements.`,
       };
     }

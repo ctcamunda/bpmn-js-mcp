@@ -159,14 +159,14 @@ Allowed dependency direction: top → bottom
 | `src/bpmnlint-types.ts`         | TypeScript types for bpmnlint                                                                  |
 | `src/persistence.ts`            | Optional file-backed diagram persistence                                                       |
 | `src/tool-definitions.ts`       | Thin re-export of TOOL_DEFINITIONS                                                             |
-| `src/handlers/`                 | Handler files organised by domain (38 registered MCP tools)                                    |
+| `src/handlers/`                 | Handler files organised by domain (current BPMN MCP tool set, registered via TOOL_REGISTRY)    |
 | `src/handlers/index.ts`         | Tool registry + dispatch map + re-exports                                                      |
 | `src/handlers/helpers.ts`       | Shared utilities barrel (validation, element access, etc.)                                     |
-| `src/handlers/core/`            | Diagram lifecycle: create, delete, clone, list, import, export, validate, batch, history, diff |
+| `src/handlers/core/`            | Diagram lifecycle: create, delete, list, import, export, validate, batch, history, generation  |
 | `src/handlers/elements/`        | Element CRUD: add, connect, delete, move, duplicate, insert, replace, list, get-properties     |
 | `src/handlers/properties/`      | Property setters: set-properties, set-input-output, set-event-definition, set-form-data, etc.  |
 | `src/handlers/layout/`          | Layout & alignment: layout-diagram, align-elements, label adjustment                           |
-| `src/handlers/collaboration/`   | Collaboration: create-participant, create-lanes, assign-to-lane, wrap-process, handoff, etc.   |
+| `src/handlers/collaboration/`   | Collaboration: create-participant, create-lanes, assign-to-lane, lane analysis, root elements  |
 | `src/rebuild/`                  | Rebuild-based layout engine — topology-driven positioning using bpmn-js native AutoPlace       |
 | `src/rebuild/engine.ts`         | Main layout entry point: topological walk + positioning                                        |
 | `src/bpmnlint-plugin-bpmn-mcp/` | Custom bpmnlint plugin with Camunda 8 (Zeebe) rules                                              |

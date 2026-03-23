@@ -3,7 +3,7 @@
  *
  * When no filters are given, returns all elements (backward-compatible).
  * Optional filters (namePattern, elementType, property) allow searching
- * within the same tool — merges the former search_bpmn_elements tool.
+ * within the same tool.
  */
 // @readonly
 
